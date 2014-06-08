@@ -166,5 +166,59 @@ module HashMixin
   end
 end
 
+# C character buffer to Ruby numeric type conversions
+class CData
+  # Convert from
+  def self.short_le(data); data.unpack('s<')[0]; end
+  def self.ushort_le(data); data.unpack('S<')[0]; end
+
+  def self.short_be(data); data.unpack('s>')[0]; end
+  def self.ushort_be(data); data.unpack('S>')[0]; end
+
+  def self.int_le(data); data.unpack('i<')[0]; end
+  def self.uint_le(data); data.unpack('I<')[0]; end
+
+  def self.int_be(data); data.unpack('i>')[0]; end
+  def self.uint_be(data); data.unpack('I>')[0]; end
+
+  def self.longlong_le(data); data.unpack('q<')[0]; end
+  def self.ulonglong_le(data); data.unpack('Q<')[0]; end
+
+  def self.longlong_be(data); data.unpack('q>')[0]; end
+  def self.ulonglong_be(data); data.unpack('Q>')[0]; end
+
+  # Convert to
+  def self.to_short_le(data); [data].unpack('s<'); end
+  def self.to_ushort_le(data); [data].unpack('S<'); end
+
+  def self.to_short_be(data); [data].unpack('s>'); end
+  def self.to_ushort_be(data); [data].unpack('S>'); end
+
+  def self.to_int_le(data); [data].unpack('i<'); end
+  def self.to_uint_le(data); [data].unpack('I<'); end
+
+  def self.to_int_be(data); [data].unpack('i>'); end
+  def self.to_uint_be(data); [data].unpack('I>'); end
+
+  def self.to_longlong_le(data); [data].unpack('q<'); end
+  def self.to_ulonglong_le(data); [data].unpack('Q<'); end
+
+  def self.to_longlong_be(data); [data].unpack('q>'); end
+  def self.to_ulonglong_be(data); [data].unpack('Q>'); end
+
+  @@bitswap = begin
+    collector2 = []
+    (0..255).each do |val|
+      collector1 = []
+      (0..7).each do |i|
+        collector1 << (((val >> i) & 1) << (7-i))
+      end
+      collector2 << (collector1.inject(:+).chr)
+    end
+    collector2.join('')
+  end
+
+  def self.test_bit(value, n); ((value >> n) & 1) == 1; end
+end
 
 end # Mutagen module
