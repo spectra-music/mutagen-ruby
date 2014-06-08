@@ -1,7 +1,7 @@
 language: ruby
 rvm:
-  - rbx-2
-  - ruby-2.0
+#  - rbx-2 # RBX-2 doesn't support kwargs yet.
+  - ruby-head
   - ruby-2.1
 
 addons:
