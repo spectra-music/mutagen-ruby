@@ -5,7 +5,7 @@ module Mutagen
 
 
 # total_ordering is not implemented here as it
-# is basically a version of Ruby's <=> operator and Enumerable mixin
+# is basically a version of Ruby's <=> operator and Comparable mixin
 
 
 # Implement the dict API using keys() and __*item__ methods.
@@ -167,7 +167,7 @@ module HashMixin
 end
 
 # C character buffer to Ruby numeric type conversions
-class CData
+module CData
   # Convert from
   def self.short_le(data); data.unpack('s<')[0]; end
   def self.ushort_le(data); data.unpack('S<')[0]; end
@@ -206,7 +206,7 @@ class CData
   def self.to_longlong_be(data); [data].unpack('q>'); end
   def self.to_ulonglong_be(data); [data].unpack('Q>'); end
 
-  @@bitswap = begin
+  BITSWAP = begin
     collector2 = []
     (0..255).each do |val|
       collector1 = []
@@ -221,4 +221,50 @@ class CData
   def self.test_bit(value, n); ((value >> n) & 1) == 1; end
 end
 
+# Mutagen.lock and Mutagen.unlock are replaced with the Filelock gem
+
+# Insert empty space into a file starting at (offset from end).
+# fileobj must be an open file object, open rb+ or equivalent.
+# @param fileobj [File] the file to insert into
+# @param size [Fixnum] the number of bytes to insert
+# @param offset [Fixnum] the offset from the beginning of the file to begin insertion at
+def self.insert_bytes(fileobj, size, offset)
+  raise ArgumentError, 'size cannot be less than 1' unless size > 0
+  raise ArgumentError, 'offset cannot be less than 0' unless offset >= 0
+
+  move_size = fileobj.size - offset   # the size of the block to move
+  # If we want to add more bytes than the file has,
+  # we need to append some to the file
+  if size > fileobj.size or offset == fileobj.size
+    append_size = size
+    append_size -= fileobj.size if offset != fileobj.size
+    # Append directly to the end of the file
+    #TODO: IO.write(fileobj.path, IO.read(File::NULL, append_size), fileobj.size)
+    IO.write(fileobj.path, "\x00" * append_size, fileobj.size)
+  end
+
+  move_location =  offset + size      # the location the block will go
+  # if we need to move the byte array,
+  if move_size > 0
+    IO.write(fileobj.path, IO.read(fileobj.path, move_size, offset), move_location)
+  end
+end
+
+# Delete bytes from a file starting at offset
+# @param fileobj [File] the file to delete from
+# @param size [Fixnum] the number of bytes to delete
+# @param offset [Fixnum] the offset from the beginning of the file to begin deletion at
+def self.delete_bytes(fileobj, size, offset)
+  raise ArgumentError, 'size cannot be less than 1' unless size > 0
+  raise ArgumentError, 'offset cannot be less than 0' unless offset >= 0
+
+  filesize = fileobj.size
+  move_size = filesize - offset - size
+  raise ArgumentError, "can't move less than 0 bytes" unless move_size >= 0
+
+  if move_size > 0
+    IO.write(fileobj.path, IO.read(fileobj.path, move_size, offset + size), offset)
+  end
+  fileobj.truncate(filesize - size)
+end
 end # Mutagen module
