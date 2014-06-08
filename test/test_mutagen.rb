@@ -1,6 +1,6 @@
 require 'minitest_helper'
 
-class TestMetadata < MiniTest::Unit::TestCase
+class TestMetadata < MiniTest::Test
   class FakeMeta < Mutagen::Metadata
     def initialize
     end
