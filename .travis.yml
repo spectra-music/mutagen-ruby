@@ -4,6 +4,6 @@ rvm:
   - ruby-2.0
   - ruby-2.1
 
-#addons:
-#  code_climate:
-#    repo_token:
+addons:
+  code_climate:
+    repo_token: 2f4415c608ab2a111587d321f0d51e194f8a777dacebe97cc0c0648036e3a827
