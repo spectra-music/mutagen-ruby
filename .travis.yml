@@ -1,0 +1,9 @@
+language: ruby
+rvm:
+  - rbx-2
+  - ruby-2.0
+  - ruby-2.1
+
+#addons:
+#  code_climate:
+#    repo_token:
