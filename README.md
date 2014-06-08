@@ -1,5 +1,7 @@
 # Mutagen
-
+[![Build Status](http://img.shields.io/travis/spectra-music/mutagen-ruby/master.svg?style=flat)](https://travis-ci.org/spectra-music/mutagen-ruby)
+[![Code Climate](https://img.shields.io/codeclimate/github/spectra-music/mutagen-ruby.svg?style=flat)](https://codeclimate.com/github/spectra-music/mutagen-ruby)
+[![Coverage](https://img.shields.io/codeclimate/coverage/github/spectra-music/mutagen-ruby.svg?style=flat)](https://codeclimate.com/github/spectra-music/mutagen-ruby)
 TODO: Write a gem description
 
 ## Installation
