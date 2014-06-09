@@ -19,4 +19,15 @@ class SpecSanityChecks < MiniTest::Test
     assert_raises(TypeError) { s.write(nil, 'abc') }
     assert_raises(TypeError) { s.write(nil, 'a') }
   end
+
+  def test_stringspec
+    s = StringSpec.new('name', 3)
+    assert_equal ['abc', 'defg'], s.read(nil, 'abcdefg')
+    assert_equal 'abc', s.write(nil, 'abcdefg')
+    assert_equal "\x00\x00\x00", s.write(nil, nil)
+    assert_equal "\x00\x00\x00", s.write(nil, "\x00")
+    assert_equal "a\x00\x00", s.write(nil, "a")
+  end
+
+
 end

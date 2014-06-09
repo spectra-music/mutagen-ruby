@@ -137,6 +137,8 @@ module Mutagen::ID3
       Integer(@value)
     end
 
+    alias_method :to_i, :to_int
+
     def method_missing(name, *args, &blk)
       ret = @number.send(name, *args, &blk)
       ret.is_a?(Numeric) ? BitPaddedInteger.new(ret) : ret

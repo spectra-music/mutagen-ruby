@@ -84,4 +84,35 @@ class EncodingSpec < ByteSpec
     [1,value].min
   end
 end
+
+class StringSpec < Spec
+  def initialize(name, length)
+    super(name)
+    @len = length
+  end
+
+  def read(frame, data)
+    return data[0..@len-1], data[@len..-1]
+  end
+
+  def write(frame, value)
+    if value.nil?
+      "\x00" * @len
+    else
+      (value + "\x00" * @len)[0..@len-1]
+    end
+  end
+
+  def validate(frame, value)
+    if value.nil?
+      return nil
+    end
+
+    if value.size == @len
+      return value
+    end
+    raise ArgumentError, "Invalid StringSpec[#{@len}] data: #{value}"
+  end
 end
+end
+
