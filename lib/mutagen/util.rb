@@ -239,7 +239,6 @@ def self.insert_bytes(fileobj, size, offset)
     append_size = size
     append_size -= fileobj.size if offset != fileobj.size
     # Append directly to the end of the file
-    #TODO: IO.write(fileobj.path, IO.read(File::NULL, append_size), fileobj.size)
     IO.write(fileobj.path, "\x00" * append_size, fileobj.size)
   end
 

@@ -25,3 +25,10 @@ class TestMetadata < MiniTest::Test
     assert_raises(NotImplementedError) { FakeMeta.new.delete 'filename' }
   end
 end
+
+# Can't test FileType yet (we need vorbis etc..)
+# class TestFileType < MiniTest::Test
+#   def setup
+#
+#   end
+# end
