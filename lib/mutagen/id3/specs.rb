@@ -1,6 +1,7 @@
 require 'mutagen/id3/util'
 module Mutagen::ID3
 class Spec
+  attr_reader :name
   def initialize(name)
     @name = name
   end
@@ -108,10 +109,34 @@ class StringSpec < Spec
       return nil
     end
 
+    unless value.is_a? Array
+      value.to_s.encode 'ascii'
+    end
+
     if value.size == @len
       return value
     end
     raise ArgumentError, "Invalid StringSpec[#{@len}] data: #{value}"
+  end
+end
+
+class BinaryDataSpec < Spec
+  def read(frame, data)
+    return data, ''
+  end
+
+  def write(frame, value)
+    if value.nil?
+      ''
+    elsif value.is_a? Array
+      value
+    else
+      value.to_s.encode('ascii')
+    end
+  end
+
+  def validate(frame,value)
+    value.is_a?(Array) ? value : value.encode('ascii')
   end
 end
 end

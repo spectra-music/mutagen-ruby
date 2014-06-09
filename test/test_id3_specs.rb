@@ -29,5 +29,15 @@ class SpecSanityChecks < MiniTest::Test
     assert_equal "a\x00\x00", s.write(nil, "a")
   end
 
+  def test_binarydataspec
+    s = BinaryDataSpec.new('nam')
+    assert_equal ['abcdefg',''], s.read(nil, 'abcdefg')
+    assert_equal '', s.write(nil, nil)
+    assert_equal '43', s.write(nil, 43)
+    assert_equal 'abc', s.write(nil, 'abc')
+  end
 
+  def test_encodedtextspec
+    s = EncodedTextSpec.new('name')
+  end
 end
