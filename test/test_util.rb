@@ -1,5 +1,4 @@
 require 'minitest_helper'
-require 'pp'
 
 class FakeHash
   include Mutagen::HashMixin

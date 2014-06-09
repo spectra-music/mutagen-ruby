@@ -1,5 +1,6 @@
 require 'mutagen/version'
 require 'mutagen/util'
+require 'mutagen/id3'
 
 module Mutagen
   # An abstract dict-like object.
