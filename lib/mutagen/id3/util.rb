@@ -1,12 +1,12 @@
 module Mutagen::ID3
-  class NoHeaderError < StandardError; end
-  class BadUnsynchData < StandardError; end
-  class BadCompressedData < StandardError; end
-  class TagError < StandardError; end
-  class UnsupportedVersionError < StandardError; end
-  class EncryptionUnsupportedError < StandardError; end
-  class JunkFrameError < StandardError; end
-  class Warning < StandardError; end
+  class ID3NoHeaderError < Mutagen::ValueError; end
+  class ID3BadUnsynchData < Mutagen::ValueError; end
+  class ID3BadCompressedData < Mutagen::ValueError; end
+  class ID3TagError < Mutagen::ValueError; end
+  class ID3UnsupportedVersionError < Mutagen::ValueError; end
+  class ID3EncryptionUnsupportedError < Mutagen::ValueError; end
+  class ID3JunkFrameError < Mutagen::ValueError; end
+  class ID3Warning < Mutagen::ValueError; end
 
   module Unsynch
     def self.decode(value)
@@ -18,14 +18,14 @@ module Mutagen::ID3
           safe = (val != 0xFF)
         else
           if val >= 0xE0
-            raise 'invalid sync-safe string'
+            raise Mutagen::ValueError, 'invalid sync-safe string'
           elsif val != 0x00
             output << val
           end
           safe = true
         end
       end
-      raise 'string ended unsafe' unless safe
+      raise Mutagen::ValueError, 'string ended unsafe' unless safe
       return output
     end
 
@@ -62,7 +62,7 @@ module Mutagen::ID3
         index = 0
         bytes_ = Array.new(width, "\x00")
         while value > 0
-          raise "Value too wide (#{width} bytes)" if index > width
+          raise Mutagen::ValueError, "Value too wide (#{width} bytes)" if index > width
           bytes_[index] = value & mask
           value >>= bits
           index += 1

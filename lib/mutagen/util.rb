@@ -20,6 +20,9 @@ module Mutagen
 # This class is not optimized for very large dictionaries; many
 # functions have linear memory requirements. I recommend you
 # override some of these functions if speed is required.
+
+class ValueError < StandardError; end
+
 module HashMixin
   include Enumerable
 
@@ -266,4 +269,10 @@ def self.delete_bytes(fileobj, size, offset)
   end
   fileobj.truncate(filesize - size)
 end
+
+def self.strip_arbitrary(s, chars)
+    r = chars.chars.map { |c| Regexp.quote(c) }.join
+    s.gsub(/(^[#{r}]*)|([#{r}]*$)/, '')
+end
+
 end # Mutagen module

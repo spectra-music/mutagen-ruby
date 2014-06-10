@@ -39,5 +39,21 @@ class SpecSanityChecks < MiniTest::Test
 
   def test_encodedtextspec
     s = EncodedTextSpec.new('name')
+    f = Frame.new
+    f.encoding = 0
+    assert_equal ['abcd', 'fg'], s.read(f, "abcd\x00fg")
+    assert_equal "abcdefg\x00", s.write(f, 'abcdefg')
+    assert_raises(NoMethodError) { s.write f, nil }
+  end
+
+  def test_timestampspec
+    s = TimeStampSpec.new 'name'
+    f = Frame.new
+    f.encoding = 0
+    assert_equal [ID3TimeStamp.new('ab'), 'fg'], s.read(f, "ab\x00fg")
+    assert_equal [ID3TimeStamp.new('1234'), ''], s.read(f, "1234\x00")
+    assert_equal "1234\x00", s.write(f, ID3TimeStamp.new('1234'))
+    assert_raises(NoMethodError) { s.write(f, nil) }
+    assert_equal ID3TimeStamp.new('2000-01-01').to_s, '2000-01-01'
   end
 end
