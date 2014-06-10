@@ -3,6 +3,9 @@ require 'mutagen/id3/specs'
 require 'zlib'
 
 module Mutagen::ID3
+def is_valid_frame_id(frame_id)
+  true
+end
 
 # Fundamental unit of ID3 data.
 #
@@ -28,11 +31,12 @@ class Frame
 
   attr_accessor :encoding
 
+  FRAMESPEC = []
+
   def initialize(*args, **kwargs)
-    @framespec = []
     if args.size == 1 and kwargs.size == 0 and args[0].is_a? self.class
       other = args[0]
-      @framespec.each do |checker|
+      self.class::FRAMESPEC.each do |checker|
         #if other.instance_variable_defined?('@'+checker.name)
         begin
           val = checker.validate(self, other.instance_variable_get('@'+checker.name))
@@ -45,10 +49,10 @@ class Frame
         instance_variable_set('@'+checker.name, val)
       end
     else
-      @framespec.zip(args) do |checker, val|
+      self.class::FRAMESPEC.zip(args) do |checker, val|
         instance_variable_set('@'+checker.name, checker.validate(self, val))
       end
-      @framespec[args.size..-1].each do |checker|
+      self.class::FRAMESPEC[args.size..-1].each do |checker|
         begin
           # TODO: does checker.name.to_sym improve performance?
           validated = checker.validate(self, kwargs[checker.name])
@@ -65,7 +69,7 @@ class Frame
   # kwargs get passed to the specs
   def _get_v23_frame(**kwargs)
     new_kwargs = {}
-    @framespec.each do |checker|
+    self.class::FRAMESPEC.each do |checker|
       name = checker.name
       value = instance_variable_get('@'+name)
       new_kwargs[name] = checker._validate23(value, **kwargs)
@@ -88,7 +92,7 @@ class Frame
   # to construct a copy of this frame
   def repr
     kw = []
-    @framespec.each do |attr|
+    self.class::FRAMESPEC.each do |attr|
       kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
     end
     "#{this.class.to_s}.new(#{kw.join(', ')})"
@@ -97,7 +101,7 @@ class Frame
   protected
   def read_data(data)
     odata = data
-    @framespec.each do |reader|
+    self.class::FRAMESPEC.each do |reader|
       raise ID3JunkFrameError if data.emtpy?
       begin
         value, data = reader.read(self, data)
@@ -114,15 +118,22 @@ class Frame
 
   def write_data
     data = []
-    @framespec.each do |writer|
+    self.class::FRAMESPEC.each do |writer|
       data << writer.write(self, instance_variable_get('@'+writer.name))
     end
     data.join
   end
 
-  def to_s
+  # Return a human-readable representation of the frame
+  def pprint
+    inspect
+  end
+
+  def _pprint
     '[unrepresentable data]'
   end
+
+  alias_method :to_s, :_pprint
 
   def inspect
     "#<#{self.class} #{self.to_s}>"
@@ -189,12 +200,11 @@ end
 # Some ID3 frames have optional data; this lass extnds Frame to
 # provide support for those parts.
 class FrameOpt < Frame
-  @optionalspec = []
+  OPTIONALSPEC = []
 
   def initialize
-    @optionalspec = []
     super(*args, **kwargs)
-    @optionalspec.each do |spec|
+    self.class::OPTIONALSPEC.each do |spec|
       if kwargs.has_key? spec.name
         validated = spec.validate(self, kwargs[spec.name])
         instance_variable_set('@'+spec.name, validated)
@@ -206,13 +216,13 @@ class FrameOpt < Frame
   protected
   def read_data(data)
     odata = data
-    @framespec.each do |reader|
+    self.class::FRAMESPEC.each do |reader|
       raise ID3JunkFrameError if data.empty?
       value, data = reader.read(self, data)
       instance_variable_set('@'+reader.name, value)
     end
     unless data.nil? or data.empty?
-      @optionalspec.each do |reader|
+      self.class::OPTIONALSPEC.each do |reader|
         break if data.empty?
         value, data = reader.read(self, data)
         instance_variable_set('@'+reader.name, value)
@@ -226,10 +236,10 @@ class FrameOpt < Frame
 
   def write_data
     data = []
-    @framespec.each do |writer|
+    self.class::FRAMESPEC.each do |writer|
       data << writer.write(self, instance_variable_get('@'+writer.name))
     end
-    @optionalspec.each do |writer|
+    self.class::OPTIONALSPEC.each do |writer|
       #TODO: Maybe we should store the ivar and check `.nil?` instead?
       break unless instance_variable_defined? '@'+writer.name
       data << writer.write(self, instance_variable_get('@'+writer.name))
@@ -240,10 +250,10 @@ class FrameOpt < Frame
 
   def repr
     kw = []
-    @framespec.each do |attr|
+    self.class::FRAMESPEC.each do |attr|
       kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
     end
-    @optionalspec.each do |attr|
+    self.class::OPTIONALSPEC.each do |attr|
       if instance_variable_defined? '@'+attr.name
         kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
       end
@@ -266,10 +276,48 @@ end
 # UTF-16BE, and 3 for UTF-8. If you don't want to worry about
 # encodings, just set it to 3.
 class TextFrame < Frame
-  @framespec = [
+  include Enumerable
+
+  FRAMESPEC = [
       EncodingSpec.new('encoding'),
-      MultiSpec.new('text', EncodedTextSpec.new('text'), sep:"\x00")
+      MultiSpec.new('text', EncodedTextSpec.new('text'), sep:"\u0000")
   ]
+
+  def to_s
+    @text.join("\u0000")
+  end
+
+  def ==(other)
+    if other.is_a? String
+      self.to_s == other
+    else
+      @text == other
+    end
+  end
+
+  def []
+    @text[item]
+  end
+
+  def each(&block)
+    @text.each(&block)
+  end
+
+  # Append a string
+  def append(value)
+    @text.append(value)
+  end
+
+  # Extend the list by appending all strings from the  given list
+  def extend(value)
+    @text.extend(value)
+  end
+
+  def _pprint
+    @text.join ' / '
+  end
 end
+
+
 
 end

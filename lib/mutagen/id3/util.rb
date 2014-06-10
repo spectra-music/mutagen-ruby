@@ -71,7 +71,7 @@ module Mutagen::ID3
         else
           # PCNT and POPM use growing integers
           # of at least 4 bytes (=minwidth) as counters
-          bytes_ = ''.b
+          bytes_ = ''
           while value > 0
             # << takes a string, so turn our byte into a string
             bytes_ << (value & mask).chr
@@ -112,7 +112,6 @@ module Mutagen::ID3
   end
 
   class BitPaddedInteger
-    include Comparable
     include BitPaddedMixin
     attr_reader :bits, :bigendian, :value
 
