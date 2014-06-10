@@ -8,6 +8,10 @@ module Mutagen
 # is basically a version of Ruby's <=> operator and Comparable mixin
 
 
+  # Generic error class
+  class ValueError < StandardError; end
+
+
 # Implement the dict API using keys() and __*item__ methods.
 #
 # Similar to UserDict.DictMixin, this takes a class that defines
@@ -20,9 +24,6 @@ module Mutagen
 # This class is not optimized for very large dictionaries; many
 # functions have linear memory requirements. I recommend you
 # override some of these functions if speed is required.
-
-class ValueError < StandardError; end
-
 module HashMixin
   include Enumerable
 
@@ -209,17 +210,7 @@ module CData
   def self.to_longlong_be(data); [data].unpack('q>'); end
   def self.to_ulonglong_be(data); [data].unpack('Q>'); end
 
-  BITSWAP = begin
-    collector2 = []
-    (0..255).each do |val|
-      collector1 = []
-      (0..7).each do |i|
-        collector1 << (((val >> i) & 1) << (7-i))
-      end
-      collector2 << (collector1.inject(:+).chr)
-    end
-    collector2.join('')
-  end
+  BITSWAP = (0..255).map { |val| (0..7).map { |i| (((val >> i) & 1) << (7-i)) }.inject(:+).chr }.join
 
   def self.test_bit(value, n); ((value >> n) & 1) == 1; end
 end
