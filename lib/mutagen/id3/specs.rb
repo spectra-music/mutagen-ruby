@@ -25,7 +25,11 @@ class ByteSpec < Spec
   end
 
   def validate(frame, value)
-    value.chr unless value.nil?
+    begin
+      value.chr unless value.nil?
+    rescue RangeError
+      raise Mutagen::ValueError, "#{value} cannot be converted to char"
+    end
     value
   end
 end
@@ -76,12 +80,12 @@ class EncodingSpec < ByteSpec
 
   def validate(frame, value)
     return nil if value.nil?
-    return value if 0 <= value <= 3
+    return value if 0 <= value and value <= 3
     raise Mutagen::ValueError, "Invalid Encoding: #{value}"
   end
 
   def _validate23(frame, value, **kwargs)
-    # only 0, 1 are vaid in v2.3, default to utf-16
+    # only 0, 1 are valid in v2.3, default to utf-16
     [1,value].min
   end
 end
@@ -144,19 +148,19 @@ class EncodedTextSpec < Spec
   # Okay, seriously. This is private and defined explicitly and
   # completely by the ID3 specification. You can't just add
   # encodings here however you want.
+  ENCODINGS = [
+      ['ISO-8859-1', "\x00"], # aka Latin-1
+      ['UTF-16', "\x00\x00"],
+      ['UTF-16BE', "\x00\x00"],
+      ['UTF-8', "\x00"]
+  ]
 
   def initialize(*args)
-    @encodings = [
-        ['ISO-8859-1', "\x00"], # aka Latin-1
-        ['UTF-16', "\x00\x00"],
-        ['UTF-16BE', "\x00\x00"],
-        ['UTF-8', "\x00"]
-    ]
     super(args)
   end
 
   def read(frame, data)
-    enc, term = @encodings[frame.encoding]
+    enc, term = ENCODINGS[frame.encoding]
     ret = ''
     if term.size == 1
       if data.include? term
@@ -171,7 +175,7 @@ class EncodedTextSpec < Spec
           data, ret = data[0...offset], data[offset+2..-1]
           break
         end
-      rescue ValueError
+      rescue Mutagen::ValueError
         # ignored
       end
     end
@@ -184,7 +188,7 @@ class EncodedTextSpec < Spec
 
   # @raise [NoMethodError] if value doesn't have `.encode`
   def write(frame, value)
-    enc, term = @encodings[frame.encoding]
+    enc, term = ENCODINGS[frame.encoding]
     value.encode(enc) + term
   end
 
@@ -378,8 +382,180 @@ class TimeStampSpec < EncodedTextSpec
     begin
       return ID3TimeStamp.new(value)
     rescue TypeError
-      raise ValueError, "Invalid ID3TimeStamp: #{value}"
+      raise Mutagen::ValueError, "Invalid ID3TimeStamp: #{value}"
     end
+  end
+end
+
+class ChannelSpec < ByteSpec
+  (OTHER, MASTER, FRONTRIGHT, FRONTLEFT, BACKRIGHT, BACKLEFT, FRONTCENTRE, BACKCENTRE, SUBWOOFER) = (0...9).to_a
+end
+
+class VolumeAdjustmentSpec < Spec
+  def read(frame, data)
+    value, _ = data[0...2].unpack('s>')
+    return value/512.0, data[2..-1]
+  end
+
+  def write(frame, value)
+    number = (value*512).round
+    unless -32768 <= number and number <= 32767
+      raise Mutagen::ValueError, 'Short out of range'
+    end
+    [number].pack('s>')
+  end
+
+  def validate(frame, value)
+    unless value.nil?
+      self.write(frame, value) # This transparently passes the exception up
+    end
+    value
+  end
+end
+
+class VolumePeakSpec < Spec
+  def read(frame, data)
+    # http://bugs.xmms.org/attachment.cgi?id=113&action=view
+    peak = 0
+    bits = data[0].ord
+    bytes = [4, ((bits + 7) >> 3)].min
+    # not enough frame data
+    if bytes + 1 > data.size
+      raise ID3JunkFrameError
+    end
+    shift = ((8 - (bits & 7)) & 7 ) + (4 - bytes) * 8
+    (1..bytes).times do |i|
+      peak *= 256
+      peak += data[i].ord
+    end
+    peak *= 2 ** shift
+    return (peak.to_f / (2**31-1)), data[1+bytes..-1]
+  end
+
+  def write(frame, value)
+    number = (value*32768).round
+    unless 0 <= number and number <= 65535
+      raise Mutagen::ValueError, "Unsigned Short out of range"
+    end
+    # Always write as 16bits for sanity
+    "\x10" + [number].pack('S>')
+  end
+
+  def validate(frame, value)
+    unless value.nil?
+      self.write(frame, value)
+    end
+    value
+  end
+end
+
+class SynchronizedTextSpec < EncodedTextSpec
+  def read(frame, data)
+    texts = []
+    encoding, term = ENCODINGS[frame.encoding]
+    until data.empty?
+      l = term.size
+      value_idx = data.index(term)
+      raise ID3JunkFrameError if value_idx.nil?
+      value = data[0...value_idx].encode
+      raise ID3JunkFrameError if data.size < value_idx + l + 4
+      time, _ = data[value_idx + l ... value_idx + l + 4].unpack('I!>')
+      texts << [value, time]
+      data = data[value_idx+l+4..-1]
+    end
+    return texts, ''
+  end
+
+  def write(frame, value)
+    data = []
+    encoding, term = ENCODINGS[frame.encoding]
+    frame.text.each do |text, time|
+      text = text.encode(encoding) + term
+      data << text + [time].pack('I>')
+    end
+    data.join
+  end
+
+  def validate(frame, value)
+    value
+  end
+end
+
+class KeyEventSpec < Spec
+  def read(frame, data)
+    events = []
+    while data.size >= 5
+      events << data[0...5].unpack('cI!>')
+      data = data[5..-1]
+    end
+    return events, data
+  end
+
+  def write(frame, value)
+    value.map { |event| event.pack('cI!>') }.join
+  end
+
+  def validate(frame, value)
+    value
+  end
+end
+
+# Not to be confused with VolumeAdjustmentSpec
+class VolumeAdjustmentsSpec < Spec
+  def read(frame, data)
+    adjustments = {}
+    while data.size >= 4
+      freq, adj = data[0...4].unpack('S>s>')
+      data = data[4..-1]
+      freq /= 2.0
+      adj /= 512.0
+      adjustments[freq] = adj
+    end
+    adjustments = adjustments.to_a
+    adjustments.sort!
+    return adjustments, data
+  end
+
+  def write(frame, value)
+    value.sort!
+    value.map{ |freq, adj| [(freq * 2).to_i, (adj * 512).to_i].pack('S>s>') }.join
+  end
+
+  def validate(frame, value)
+    value
+  end
+end
+
+class ASPIIndexSpec < Spec
+  def read(frame, data)
+    if frame.b == 16
+      format = 'S>'
+      size = 2
+    elsif frame.b == 8
+      format = 'C'
+      size = 1
+    else
+      warn "invalid bit count in ASPI (#{frame.b})"
+      return [], data
+    end
+    indexes = data[0 ... frame.N * size]
+    data = data[frame.N * size .. -1]
+    return indexes.unpack(format * frame.N), data
+  end
+
+  def write(frame, values)
+    if frame.b == 16
+      format = 'S>'
+    elsif frame.b == 8
+      format = 'C'
+    else
+      raise ValueError, "frame.b must be 8 or 16, not #{frame.b}"
+    end
+    values.pack(format * frame.N)
+  end
+
+  def validate(frame, values)
+    values
   end
 end
 end

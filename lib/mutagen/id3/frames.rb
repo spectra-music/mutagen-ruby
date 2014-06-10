@@ -36,7 +36,7 @@ class Frame
         #if other.instance_variable_defined?('@'+checker.name)
         begin
           val = checker.validate(self, other.instance_variable_get('@'+checker.name))
-        rescue ValueError => e
+        rescue Mutagen::ValueError => e
           raise e.exception("#{checker.name}: #{e.message}")
         end
         #else
@@ -52,7 +52,7 @@ class Frame
         begin
           # TODO: does checker.name.to_sym improve performance?
           validated = checker.validate(self, kwargs[checker.name])
-        rescue ValueError => e
+        rescue Mutagen::ValueError => e
           raise e.exception("#{checker.name}: #{e.message}")
         end
         instance_variable_set('@'+checker.name, validated)
@@ -143,7 +143,7 @@ class Frame
       if tflags & Frame::FLAG24_UNSYNCH or id3.f_unsynch
         begin
           data = Unsynch.decode data
-        rescue ValueError => err
+        rescue Mutagen::ValueError => err
           raise ID3BadUnsynchData, "#{err}:#{data}" if id3.PEDANTIC
         end
       end
