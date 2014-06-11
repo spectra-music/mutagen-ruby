@@ -5,11 +5,11 @@ require 'zlib'
 
 
 module Mutagen
-  module ID3
+  class ID3 < Mutagen::Metadata
     include Specs
 
     def is_valid_frame_id(frame_id)
-      true
+      frame_id =~ /[:alnum:]/ and frame_id =~ /[:upper:]/
     end
 
     module ParentFrames
@@ -110,7 +110,6 @@ module Mutagen
           "#{self.class.to_s}.new(#{kw.join(', ')})"
         end
 
-        protected
         def read_data(data)
           odata = data
           self.class::FRAMESPEC.each do |reader|
@@ -136,9 +135,13 @@ module Mutagen
           data.join
         end
 
+        def self.pprint(obj)
+          "#{obj.class}=#{obj.to_s}"
+        end
+
         # Return a human-readable representation of the frame
         def pprint
-          "#{self.class}=#{self.to_s}"
+          Frame.pprint(self)
         end
 
         def _pprint

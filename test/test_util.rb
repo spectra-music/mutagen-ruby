@@ -1,4 +1,4 @@
-require 'test_helper'
+require_relative 'test_helper'
 
 class FakeHash
   include Mutagen::HashMixin
@@ -40,8 +40,8 @@ class TestDictMixin < MiniTest::Test
   end
 
   def test_has_key_contains
-    assert @fdict.has_key 'foo'
-    refute @fdict.has_key 'bar'
+    assert @fdict.has_key? 'foo'
+    refute @fdict.has_key? 'bar'
   end
 
   def test_iter

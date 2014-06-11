@@ -1,5 +1,5 @@
 module Mutagen
-  module ID3
+  class ID3 < Mutagen::Metadata
     class ID3NoHeaderError < ValueError;
     end
     class ID3BadUnsynchData < ValueError;

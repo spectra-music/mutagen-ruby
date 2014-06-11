@@ -1,8 +1,7 @@
 require 'test_helper'
-include Mutagen::ID3
 
 class SpecSanityChecks < MiniTest::Test
-
+  include Mutagen::ID3::Specs
   def test_bytespec
     s = ByteSpec.new('name')
     assert_equal [97, 'bcdefg'], s.read(nil, 'abcdefg')
@@ -69,6 +68,7 @@ class SpecSanityChecks < MiniTest::Test
 end
 
 class SpecValidateChecks < MiniTest::Test
+  include Mutagen::ID3::Specs
   def test_volumeadjustmentspec
     s = VolumeAdjustmentSpec.new('gain')
     assert_raises(Mutagen::ValueError) { s.validate(nil, 65) }
@@ -86,110 +86,111 @@ class SpecValidateChecks < MiniTest::Test
 end
 
 class BitPaddedIntegerTest < MiniTest::Test
+  include Mutagen
   def test_zero
-    assert_equal 0, BitPaddedInteger.new("\x00\x00\x00\x00")
+    assert_equal 0, ID3::BitPaddedInteger.new("\x00\x00\x00\x00")
   end
 
   def test_1
-    assert_equal 1, BitPaddedInteger.new("\x00\x00\x00\x01")
+    assert_equal 1, ID3::BitPaddedInteger.new("\x00\x00\x00\x01")
   end
 
   def test_1l
-    assert_equal 1, BitPaddedInteger.new("\x01\x00\x00\x00", bigendian:false)
+    assert_equal 1, ID3::BitPaddedInteger.new("\x01\x00\x00\x00", bigendian:false)
   end
 
   def test_129
-    assert_equal 0x81, BitPaddedInteger.new("\x00\x00\x01\x01")
+    assert_equal 0x81, ID3::BitPaddedInteger.new("\x00\x00\x01\x01")
   end
 
   def test_129b
-    assert_equal 0x81, BitPaddedInteger.new("\x00\x00\x01\x81")
+    assert_equal 0x81, ID3::BitPaddedInteger.new("\x00\x00\x01\x81")
   end
 
   def test_65
-    assert_equal 0x41, BitPaddedInteger.new("\x00\x00\x01\x81", bits:6)
+    assert_equal 0x41, ID3::BitPaddedInteger.new("\x00\x00\x01\x81", bits:6)
   end
 
   def test_32b
-    assert_equal 0xFFFFFFFF, BitPaddedInteger.new("\xFF\xFF\xFF\xFF", bits:8)
+    assert_equal 0xFFFFFFFF, ID3::BitPaddedInteger.new("\xFF\xFF\xFF\xFF", bits:8)
   end
 
   def test_32bi
-    assert_equal 0xFFFFFFFF, BitPaddedInteger.new(0xFFFFFFFF, bits:8)
+    assert_equal 0xFFFFFFFF, ID3::BitPaddedInteger.new(0xFFFFFFFF, bits:8)
   end
 
   def test_s32b
-    assert_equal "\xFF\xFF\xFF\xFF", BitPaddedInteger.new("\xFF\xFF\xFF\xFF", bits:8).to_s
+    assert_equal "\xFF\xFF\xFF\xFF", ID3::BitPaddedInteger.new("\xFF\xFF\xFF\xFF", bits:8).to_s
 
   end
 
   def test_s0
-    assert_equal "\x00\x00\x00\x00", BitPaddedInteger.to_str(0)
+    assert_equal "\x00\x00\x00\x00", ID3::BitPaddedInteger.to_str(0)
   end
 
   def test_s1
-    assert_equal "\x00\x00\x00\x01", BitPaddedInteger.to_str(1)
+    assert_equal "\x00\x00\x00\x01", ID3::BitPaddedInteger.to_str(1)
   end
 
   def test_s1l
-    assert_equal "\x01\x00\x00\x00", BitPaddedInteger.to_str(1, bigendian:false)
+    assert_equal "\x01\x00\x00\x00", ID3::BitPaddedInteger.to_str(1, bigendian:false)
   end
 
   def test_s129
-    assert_equal "\x00\x00\x01\x01", BitPaddedInteger.to_str(129)
+    assert_equal "\x00\x00\x01\x01", ID3::BitPaddedInteger.to_str(129)
   end
 
   def test_s65
-    assert_equal "\x00\x00\x01\x01", BitPaddedInteger.to_str(0x41, bits:6)
+    assert_equal "\x00\x00\x01\x01", ID3::BitPaddedInteger.to_str(0x41, bits:6)
   end
 
   def test_w129
-    assert_equal "\x01\x01", BitPaddedInteger.to_str(129, width:2)
+    assert_equal "\x01\x01", ID3::BitPaddedInteger.to_str(129, width:2)
   end
 
   def test_w129l
-    assert_equal "\x01\x01", BitPaddedInteger.to_str(129, width:2, bigendian:false)
+    assert_equal "\x01\x01", ID3::BitPaddedInteger.to_str(129, width:2, bigendian:false)
   end
 
   def test_wsmall
-    assert_raises(Mutagen::ValueError) { BitPaddedInteger.to_str(129, width:1) }
+    assert_raises(Mutagen::ValueError) { ID3::BitPaddedInteger.to_str(129, width:1) }
   end
 
   def test_str_int_init
-    assert_equal(BitPaddedInteger.new(238).to_s,
-                 BitPaddedInteger.new([238].pack('L!>')).to_s)
+    assert_equal(ID3::BitPaddedInteger.new(238).to_s,
+                 ID3::BitPaddedInteger.new([238].pack('L!>')).to_s)
   end
 
   def test_varwidth
-    assert_equal 4, BitPaddedInteger.to_str(100).bytesize
+    assert_equal 4, ID3::BitPaddedInteger.to_str(100).bytesize
 
-    assert_equal 4, BitPaddedInteger.to_str(100, width:-1).bytesize
-    assert_equal 5, BitPaddedInteger.to_str(2**32, width:-1).bytesize
+    assert_equal 4, ID3::BitPaddedInteger.to_str(100, width:-1).bytesize
+    assert_equal 5, ID3::BitPaddedInteger.to_str(2**32, width:-1).bytesize
   end
 
   def test_minwidth
-    assert_equal 6, BitPaddedInteger.to_str(100, width:-1, minwidth:6).bytesize
+    assert_equal 6, ID3::BitPaddedInteger.to_str(100, width:-1, minwidth:6).bytesize
   end
 
   def test_inval_input
-    assert_raises(TypeError) { BitPaddedInteger.new nil }
+    assert_raises(TypeError) { ID3::BitPaddedInteger.new nil }
   end
 
 
   def test_has_valid_padding
-    assert BitPaddedInteger.has_valid_padding("\xff\xff", bits:8)
-    refute BitPaddedInteger.has_valid_padding("\xff")
-    refute BitPaddedInteger.has_valid_padding("\x00\xff")
-    assert BitPaddedInteger.has_valid_padding("\x7f\x7f")
-    refute BitPaddedInteger.has_valid_padding("\x7f", bits:6)
-    refute BitPaddedInteger.has_valid_padding("\x9f", bits:6)
-    assert BitPaddedInteger.has_valid_padding("\x3f", bits:6)
+    assert ID3::BitPaddedInteger.has_valid_padding("\xff\xff", bits:8)
+    refute ID3::BitPaddedInteger.has_valid_padding("\xff")
+    refute ID3::BitPaddedInteger.has_valid_padding("\x00\xff")
+    assert ID3::BitPaddedInteger.has_valid_padding("\x7f\x7f")
+    refute ID3::BitPaddedInteger.has_valid_padding("\x7f", bits:6)
+    refute ID3::BitPaddedInteger.has_valid_padding("\x9f", bits:6)
+    assert ID3::BitPaddedInteger.has_valid_padding("\x3f", bits:6)
 
-    assert BitPaddedInteger.has_valid_padding(0xff, bits:8)
-    refute BitPaddedInteger.has_valid_padding(0xff)
-    refute BitPaddedInteger.has_valid_padding(0xff << 8)
-    assert BitPaddedInteger.has_valid_padding(0x7f << 8)
-    refute BitPaddedInteger.has_valid_padding(0x9f << 32, bits:6)
-    assert BitPaddedInteger.has_valid_padding(0x3f << 16, bits:6)
+    assert ID3::BitPaddedInteger.has_valid_padding(0xff, bits:8)
+    refute ID3::BitPaddedInteger.has_valid_padding(0xff)
+    refute ID3::BitPaddedInteger.has_valid_padding(0xff << 8)
+    assert ID3::BitPaddedInteger.has_valid_padding(0x7f << 8)
+    refute ID3::BitPaddedInteger.has_valid_padding(0x9f << 32, bits:6)
+    assert ID3::BitPaddedInteger.has_valid_padding(0x3f << 16, bits:6)
   end
 end

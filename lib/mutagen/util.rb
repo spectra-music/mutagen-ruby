@@ -27,6 +27,7 @@ module Mutagen
 module HashMixin
   include Enumerable
 
+  # TODO: Switch this to iterating over items
   def each(&block)
     keys.each(&block)
   end
