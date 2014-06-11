@@ -1,4 +1,4 @@
-require 'minitest_helper'
+require 'test_helper'
 include Mutagen::ID3
 
 class SpecSanityChecks < MiniTest::Test

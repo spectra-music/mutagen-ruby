@@ -160,7 +160,7 @@ module Mutagen
         ]
 
         def initialize(*args)
-          super(args)
+          super(*args)
         end
 
         def read(frame, data)

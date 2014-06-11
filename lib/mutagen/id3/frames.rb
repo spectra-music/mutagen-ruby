@@ -12,486 +12,489 @@ module Mutagen
       true
     end
 
-    # Fundamental unit of ID3 data.
-    #
-    # ID3 tags are split into frames. Each frame has a potentially
-    # different structure, and so this base class is not very featureful.
-    class Frame
-
-      FLAG23_ALTERTAG  = 0x8000
-      FLAG23_ALTERFILE = 0x4000
-      FLAG23_READONLY  = 0x2000
-      FLAG23_COMPRESS  = 0x0080
-      FLAG23_ENCRYPT   = 0x0040
-      FLAG23_GROUP     = 0x0020
-
-      FLAG24_ALTERTAG  = 0x4000
-      FLAG24_ALTERFILE = 0x2000
-      FLAG24_READONLY  = 0x1000
-      FLAG24_GROUPID   = 0x0040
-      FLAG24_COMPRESS  = 0x0008
-      FLAG24_ENCRYPT   = 0x0004
-      FLAG24_UNSYNCH   = 0x0002
-      FLAG24_DATALEN   = 0x0001
-
-      attr_accessor :encoding
-
-      FRAMESPEC = []
-
-      #TODO: Refactor first condition into a .clone method
-      def initialize(*args, ** kwargs)
-        # If we've only got one argument, and the other argument is the same class,
-        # we're going to clone the other object's fields into ours.
-        if args.size == 1 and kwargs.size == 0 and args[0].is_a? self.class
-          other = args[0]
-          self.class::FRAMESPEC.each do |checker|
-            #if other.instance_variable_defined?('@'+checker.name)
-            begin
-              val = checker.validate(self, other.instance_variable_get("@#{checker.name}"))
-            rescue Mutagen::ValueError => e
-              raise e.exception("#{checker.name}: #{e.message}")
-            end
-            #else
-            #  raise "#{checker.name}: No instance variable for checker on #{other}"
-            #end
-            instance_variable_set("@#{checker.name}", val)
-            self.class.send("attr_reader", checker.name.to_sym)
-          end
-        else
-          self.class::FRAMESPEC.zip(args) do |checker, val|
-            instance_variable_set("@#{checker.name}", checker.validate(self, val))
-            self.class.send("attr_reader", checker.name.to_sym)
-          end
-          self.class::FRAMESPEC[args.size..-1].each do |checker|
-            begin
-              #TODO: does checker.name.to_sym improve performance?
-              validated = checker.validate(self, kwargs[checker.name])
-            rescue Mutagen::ValueError => e
-              raise e.exception("#{checker.name}: #{e.message}")
-            end
-            instance_variable_set("@#{checker.name}", validated)
-            self.class.send("attr_reader", checker.name.to_sym)
-          end
-        end
-      end
-
-      # Returns a frame copy which is suitable for writing into a v2.3 tag
+    module ParentFrames
+      # Fundamental unit of ID3 data.
       #
-      # kwargs get passed to the specs
-      def _get_v23_frame(** kwargs)
-        new_kwargs = {}
-        self.class::FRAMESPEC.each do |checker|
-          name             = checker.name
-          value            = instance_variable_get('@'+name)
-          new_kwargs[name] = checker._validate23(value, ** kwargs)
-        end
-        self.class.new(** new_kwargs)
-      end
+      # ID3 tags are split into frames. Each frame has a potentially
+      # different structure, and so this base class is not very featureful.
+      class Frame
 
-      # An internal key used to ensure frame uniqueness in a tag
-      def hash_key
-        frame_id
-      end
+        FLAG23_ALTERTAG  = 0x8000
+        FLAG23_ALTERFILE = 0x4000
+        FLAG23_READONLY  = 0x2000
+        FLAG23_COMPRESS  = 0x0080
+        FLAG23_ENCRYPT   = 0x0040
+        FLAG23_GROUP     = 0x0020
 
-      # ID3v2 three or four character frame ID
-      def frame_id
-        this.class.to_s
-      end
+        FLAG24_ALTERTAG  = 0x4000
+        FLAG24_ALTERFILE = 0x2000
+        FLAG24_READONLY  = 0x1000
+        FLAG24_GROUPID   = 0x0040
+        FLAG24_COMPRESS  = 0x0008
+        FLAG24_ENCRYPT   = 0x0004
+        FLAG24_UNSYNCH   = 0x0002
+        FLAG24_DATALEN   = 0x0001
 
-      # represention of a frame
-      # The string returned is a valid ruby expression
-      # to construct a copy of this frame
-      def repr
-        kw = []
-        self.class::FRAMESPEC.each do |attr|
-          kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
-        end
-        "#{self.class.to_s}.new(#{kw.join(', ')})"
-      end
+        attr_accessor :encoding
 
-      protected
-      def read_data(data)
-        odata = data
-        self.class::FRAMESPEC.each do |reader|
-          raise ID3JunkFrameError if data.emtpy?
-          begin
-            value, data = reader.read(self, data)
-            #rescue
-            #  raise ID3JunkFrameError
-          end
-          instance_variable_set('@'+reader.name, value)
-        end
-        leftover = Mutagen.strip_arbitrary(data, "\x00")
-        unless leftover.empty?
-          warn "Leftover data: #{self.class}: #{data} (from #{odata})"
-        end
-      end
+        FRAMESPEC = []
 
-      def write_data
-        data = []
-        self.class::FRAMESPEC.each do |writer|
-          data << writer.write(self, instance_variable_get('@'+writer.name))
-        end
-        data.join
-      end
-
-      # Return a human-readable representation of the frame
-      def pprint
-        inspect
-      end
-
-      def _pprint
-        '[unrepresentable data]'
-      end
-
-      alias_method :to_s, :_pprint
-
-      def inspect
-        "#<#{self.class} #{self.to_s}>"
-      end
-
-
-      # Construct this ID3 frame from raw string dta
-      def self.from_data(id3, tflags, data)
-        if id3._V24 <= id3.version
-          if tflags & (Frame::FLAG24_COMPRESS | Frame::FLAG24_DATALEN)
-            # The data length int is syncsafe in 2.4 (but not 2.3).
-            # However, we don't actually need the data length int,
-            # except to work around a QL 0.12 bug, and in that case
-            # all we need are the raw bytes.
-            datalen_bytes = data[0...4]
-            data          = data[4..-1]
-          end
-          if tflags & Frame::FLAG24_UNSYNCH or id3.f_unsynch
-            begin
-              data = Unsynch.decode data
-            rescue Mutagen::ValueError => err
-              raise ID3BadUnsynchData, "#{err}:#{data}" if id3.PEDANTIC
+        #TODO: Refactor first condition into a .clone method
+        def initialize(*args, ** kwargs)
+          # If we've only got one argument, and the other argument is the same class,
+          # we're going to clone the other object's fields into ours.
+          if args.size == 1 and kwargs.size == 0 and args[0].is_a? self.class
+            other = args[0]
+            self.class::FRAMESPEC.each do |checker|
+              #if other.instance_variable_defined?('@'+checker.name)
+              begin
+                val = checker.validate(self, other.instance_variable_get("@#{checker.name}"))
+              rescue Mutagen::ValueError => e
+                raise e.exception("#{checker.name}: #{e.message}")
+              end
+              #else
+              #  raise "#{checker.name}: No instance variable for checker on #{other}"
+              #end
+              instance_variable_set("@#{checker.name}", val)
+              self.class.send('attr_reader', checker.name.to_sym)
+            end
+          else
+            self.class::FRAMESPEC[0...args.size].zip(args) do |checker, val|
+              instance_variable_set("@#{checker.name}", checker.validate(self, val))
+              self.class.send('attr_reader', checker.name.to_sym)
+            end
+            self.class::FRAMESPEC[args.size..-1].each do |checker|
+              begin
+                #TODO: does checker.name.to_sym improve performance?
+                validated = checker.validate(self, kwargs[checker.name])
+              rescue Mutagen::ValueError => e
+                raise e.exception("#{checker.name}: #{e.message}")
+              end
+              instance_variable_set("@#{checker.name}", validated)
+              self.class.send("attr_reader", checker.name.to_sym)
             end
           end
-          raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG24_ENCRYPT
-          if tflags & Frame::FLAG24_COMPRESS
+        end
+
+        # Returns a frame copy which is suitable for writing into a v2.3 tag
+        #
+        # kwargs get passed to the specs
+        def _get_v23_frame(** kwargs)
+          new_kwargs = {}
+          self.class::FRAMESPEC.each do |checker|
+            name             = checker.name
+            value            = instance_variable_get('@'+name)
+            new_kwargs[name] = checker._validate23(value, ** kwargs)
+          end
+          self.class.new(** new_kwargs)
+        end
+
+        # An internal key used to ensure frame uniqueness in a tag
+        def hash_key
+          frame_id
+        end
+
+        # ID3v2 three or four character frame ID
+        def frame_id
+          self.class.to_s
+        end
+
+        # represention of a frame
+        # The string returned is a valid ruby expression
+        # to construct a copy of this frame
+        def repr
+          kw = []
+          self.class::FRAMESPEC.each do |attr|
+            kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
+          end
+          "#{self.class.to_s}.new(#{kw.join(', ')})"
+        end
+
+        protected
+        def read_data(data)
+          odata = data
+          self.class::FRAMESPEC.each do |reader|
+            raise ID3JunkFrameError if data.emtpy?
             begin
-              data = Zlib::Deflate(data)
-            rescue Zlib::Error
-              # the initial mutagen that went out with QL 0.12 did not
-              # write the 4 bytes of uncompressed size. Compensate.
-              data = datalen_bytes + data
+              value, data = reader.read(self, data)
+              #rescue
+              #  raise ID3JunkFrameError
+            end
+            instance_variable_set('@'+reader.name, value)
+          end
+          leftover = Mutagen.strip_arbitrary(data, "\x00")
+          unless leftover.empty?
+            warn "Leftover data: #{self.class}: #{data} (from #{odata})"
+          end
+        end
+
+        def write_data
+          data = []
+          self.class::FRAMESPEC.each do |writer|
+            data << writer.write(self, instance_variable_get('@'+writer.name))
+          end
+          data.join
+        end
+
+        # Return a human-readable representation of the frame
+        def pprint
+          inspect
+        end
+
+        def _pprint
+          '[unrepresentable data]'
+        end
+
+        alias_method :to_s, :_pprint
+
+        def inspect
+          "#<#{self.class} #{self.to_s}>"
+        end
+
+
+        # Construct this ID3 frame from raw string dta
+        def self.from_data(id3, tflags, data)
+          if id3._V24 <= id3.version
+            if tflags & (Frame::FLAG24_COMPRESS | Frame::FLAG24_DATALEN)
+              # The data length int is syncsafe in 2.4 (but not 2.3).
+              # However, we don't actually need the data length int,
+              # except to work around a QL 0.12 bug, and in that case
+              # all we need are the raw bytes.
+              datalen_bytes = data[0...4]
+              data          = data[4..-1]
+            end
+            if tflags & Frame::FLAG24_UNSYNCH or id3.f_unsynch
+              begin
+                data = Unsynch.decode data
+              rescue Mutagen::ValueError => err
+                raise ID3BadUnsynchData, "#{err}:#{data}" if id3.PEDANTIC
+              end
+            end
+            raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG24_ENCRYPT
+            if tflags & Frame::FLAG24_COMPRESS
+              begin
+                data = Zlib::Deflate(data)
+              rescue Zlib::Error
+                # the initial mutagen that went out with QL 0.12 did not
+                # write the 4 bytes of uncompressed size. Compensate.
+                data = datalen_bytes + data
+                begin
+                  data = Zlib::Deflate(data)
+                rescue Zlib::Error => err
+                  raise ID3BadCompressedData, "#{err}: #{data}" if id3.PEDANTIC
+                end
+              end
+            end
+          elsif id3._V23 <= id3.version
+            if tflags & Frame::FLAG23_COMPRESS
+              usize, _ = unpack('L>', data[0...4])
+              data     = data[4..-1]
+            end
+            raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG23_ENCRYPT
+            if tflags & Frame::FLAG23_COMPRESS
               begin
                 data = Zlib::Deflate(data)
               rescue Zlib::Error => err
-                raise ID3BadCompressedData, "#{err}: #{data}" if id3.PEDANTIC
+                raise ID3BadCompressedData, "#{err}: #{data}"
               end
             end
           end
-        elsif id3._V23 <= id3.version
-          if tflags & Frame::FLAG23_COMPRESS
-            usize, _ = unpack('L>', data[0...4])
-            data     = data[4..-1]
-          end
-          raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG23_ENCRYPT
-          if tflags & Frame::FLAG23_COMPRESS
-            begin
-              data = Zlib::Deflate(data)
-            rescue Zlib::Error => err
-              raise ID3BadCompressedData, "#{err}: #{data}"
+          frame = self.class.new
+          frame.instance_variable_set(:raw_data, data)
+          frame.singleton_class.class_eval { attr_reader :raw_data }
+          frame.instance_variable_set(:flags, tflags)
+          frame.singleton_class.class_eval { attr_reader :flags }
+          frame.read_data(data)
+          frame
+        end
+      end
+
+      # A frame with optional parts
+      #
+      # Some ID3 frames have optional data; this lass extnds Frame to
+      # provide support for those parts.
+      class FrameOpt < Frame
+        OPTIONALSPEC = []
+
+        def initialize
+          super(*args, ** kwargs)
+          self.class::OPTIONALSPEC.each do |spec|
+            if kwargs.has_key? spec.name
+              validated = spec.validate(self, kwargs[spec.name])
+              instance_variable_set("@#{spec.name}", validated)
+              self.class.send('attr_reader', spec.name.to_sym)
+            else
+              break
             end
           end
         end
-        frame = self.class.new
-        frame.instance_variable_set(:raw_data, data)
-        frame.singleton_class.class_eval { attr_reader :raw_data }
-        frame.instance_variable_set(:flags, tflags)
-        frame.singleton_class.class_eval { attr_reader :flags }
-        frame.read_data(data)
-        frame
-      end
-    end
 
-    # A frame with optional parts
-    #
-    # Some ID3 frames have optional data; this lass extnds Frame to
-    # provide support for those parts.
-    class FrameOpt < Frame
-      OPTIONALSPEC = []
-
-      def initialize
-        super(*args, ** kwargs)
-        self.class::OPTIONALSPEC.each do |spec|
-          if kwargs.has_key? spec.name
-            validated = spec.validate(self, kwargs[spec.name])
-            instance_variable_set("@#{spec.name}", validated)
-            self.class.send('attr_reader', spec.name.to_sym)
-          else
-            break
-          end
-        end
-      end
-
-      protected
-      def read_data(data)
-        odata = data
-        self.class::FRAMESPEC.each do |reader|
-          raise ID3JunkFrameError if data.empty?
-          value, data = reader.read(self, data)
-          instance_variable_set("@#{reader.name}", value)
-          self.class.send('attr_reader', spec.name.to_sym) unless self.respond_to? spec.name.to_sym
-        end
-        unless data.nil? or data.empty?
-          self.class::OPTIONALSPEC.each do |reader|
-            break if data.empty?
+        protected
+        def read_data(data)
+          odata = data
+          self.class::FRAMESPEC.each do |reader|
+            raise ID3JunkFrameError if data.empty?
             value, data = reader.read(self, data)
             instance_variable_set("@#{reader.name}", value)
             self.class.send('attr_reader', spec.name.to_sym) unless self.respond_to? spec.name.to_sym
           end
-        end
-        leftover = Mutagen.strip_arbitrary(data, "\x00")
-        unless leftover.empty?
-          warn "Leftover data: #{self.class}: #{data} (from #{odata})"
-        end
-      end
-
-      def write_data
-        data = []
-        self.class::FRAMESPEC.each do |writer|
-          data << writer.write(self, instance_variable_get("@#{writer.name}"))
-        end
-        self.class::OPTIONALSPEC.each do |writer|
-          #TODO: Maybe we should store the ivar and check `.nil?` instead?
-          break unless instance_variable_defined? '@'+writer.name
-          data << writer.write(self, instance_variable_get("@#{writer.name}"))
-        end
-        data.join
-      end
-
-
-      def repr
-        kw = []
-        self.class::FRAMESPEC.each do |attr|
-          kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
-        end
-        self.class::OPTIONALSPEC.each do |attr|
-          if instance_variable_defined? '@'+attr.name
-            kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
+          unless data.nil? or data.empty?
+            self.class::OPTIONALSPEC.each do |reader|
+              break if data.empty?
+              value, data = reader.read(self, data)
+              instance_variable_set("@#{reader.name}", value)
+              self.class.send('attr_reader', spec.name.to_sym) unless self.respond_to? spec.name.to_sym
+            end
+          end
+          leftover = Mutagen.strip_arbitrary(data, "\x00")
+          unless leftover.empty?
+            warn "Leftover data: #{self.class}: #{data} (from #{odata})"
           end
         end
-        "#{self.class}.new(#{kw.join(', ')})"
-      end
-    end
 
-    # Text strings.
-    #
-    # Text frames support casts to unicode or str objects, as well as
-    # list-like indexing, extend, and append.
-    #
-    # Iterating over a TextFrame iterates over its strings, not its
-    # characters.
-    #
-    # Text frames have a 'text' attribute which is the list of strings,
-    # and an 'encoding' attribute; 0 for ISO-8859 1, 1 UTF-16, 2 for
-    # UTF-16BE, and 3 for UTF-8. If you don't want to worry about
-    # encodings, just set it to 3.
-    class TextFrame < Frame
-      include Enumerable
+        def write_data
+          data = []
+          self.class::FRAMESPEC.each do |writer|
+            data << writer.write(self, instance_variable_get("@#{writer.name}"))
+          end
+          self.class::OPTIONALSPEC.each do |writer|
+            #TODO: Maybe we should store the ivar and check `.nil?` instead?
+            break unless instance_variable_defined? '@'+writer.name
+            data << writer.write(self, instance_variable_get("@#{writer.name}"))
+          end
+          data.join
+        end
 
-      FRAMESPEC = [
-          Specs::EncodingSpec.new('encoding'),
-          Specs::MultiSpec.new('text', Specs::EncodedTextSpec.new('text'), sep: "\u0000")
-      ]
 
-      def to_s
-        @text.join("\u0000")
-      end
-
-      def ==(other)
-        if other.is_a? String
-          self.to_s == other
-        else
-          @text == other
+        def repr
+          kw = []
+          self.class::FRAMESPEC.each do |attr|
+            kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
+          end
+          self.class::OPTIONALSPEC.each do |attr|
+            if instance_variable_defined? '@'+attr.name
+              kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
+            end
+          end
+          "#{self.class}.new(#{kw.join(', ')})"
         end
       end
 
-      def [](index)
-        @text[index]
+      # Text strings.
+      #
+      # Text frames support casts to unicode or str objects, as well as
+      # list-like indexing, extend, and append.
+      #
+      # Iterating over a TextFrame iterates over its strings, not its
+      # characters.
+      #
+      # Text frames have a 'text' attribute which is the list of strings,
+      # and an 'encoding' attribute; 0 for ISO-8859 1, 1 UTF-16, 2 for
+      # UTF-16BE, and 3 for UTF-8. If you don't want to worry about
+      # encodings, just set it to 3.
+      class TextFrame < Frame
+        include Enumerable
+
+        FRAMESPEC = [
+            Specs::EncodingSpec.new('encoding'),
+            Specs::MultiSpec.new('text', Specs::EncodedTextSpec.new('text'), sep: "\u0000")
+        ]
+
+        def to_s
+          @text.join("\u0000")
+        end
+
+        def ==(other)
+          if other.is_a? String
+            self.to_s == other
+          else
+            @text == other
+          end
+        end
+
+        def [](index)
+          @text[index]
+        end
+
+        def []=(index, value)
+          @text[index, value]
+        end
+
+        def each(&block)
+          @text.each(&block)
+        end
+
+        def push(*args)
+          @text.push(*args)
+        end
+
+        def <<(value)
+          @text << value
+        end
+
+        # def method_missing(method_sym, *args, **kwargs)
+        #   if @text.methods.include? method_sym
+        #     @text.send(method_sym, *args)
+        #   end
+        # end
+
+        def _pprint
+          @text.join ' / '
+        end
+
+        def text
+          @text
+        end
       end
 
-      def []=(index, value)
-        @text[index, value]
+      # Numerical text strings.
+      #
+      # The numeric value of these frames can be gotten with `to_i`, e.g.
+      # @example
+      #    frame = TLEN.new '12345'
+      #    length = frame.to_i
+      class NumericTextFrame < TextFrame
+        FRAMESPEC = [
+            Specs::EncodingSpec.new('encoding'),
+            Specs::MultiSpec.new('text', Specs::EncodedNumericPartTextSpec.new('text'), sep: "\u0000")
+        ]
+
+        # Get the numerical value of the string
+        def to_i
+          text[0].to_i
+        end
+
+        alias_method :+@, :to_i
       end
 
-      def each(&block)
-        @text.each(&block)
+      # Multivalue numerical text strings
+      #
+      # These strings indicate 'part (e.g. track) X of Y', and `.to_i`
+      # returns the first value:
+      # @example
+      #    frame = TRCK('4/15')
+      #    track = frame.to_i # track == 4
+      class NumericPartTextFrame < TextFrame
+        FRAMESPEC = [
+            Specs::EncodingSpec.new('encoding'),
+            Specs::MultiSpec.new('text', Specs::EncodedNumericPartTextSpec.new('text'), sep: "\u0000")
+        ]
+
+        def to_i
+          text[0].split('/')[0].to_i
+        end
+
+        alias_method :+@, :to_i
+        alias_method :first, :to_i
+
+        def second
+          text[0].split('/')[1].to_i
+        end
       end
 
-      def push(*args)
-        @text.push(*args)
+      # A list of time stamps.
+      #
+      # The 'text' attribute in this frame is a list of ID3TimeStamp
+      # objects, not a list of strings
+      class TimeStampTextFrame < TextFrame
+        FRAMESPEC = [
+            Specs::EncodingSpec.new('encoding'),
+            Specs::MultiSpec.new('text', Specs::TimeStampSpec.new('stamp'), sep: ','),
+        ]
+
+        def to_s
+          text.map { |stamp| stamp.text }.join(',')
+        end
+
+        def _pprint
+          text.map { |stamp| stamp.text }.join(' / ')
+        end
       end
 
-      def <<(value)
-        @text << value
+      # A frame containing a URL string.
+      #
+      # The ID3 specification is silent about IRIs and normalized URL
+      # forms. Mutagen assumes all URLs in files are encoded as Latin 1,
+      # but string conversion of this frame returns a UTF-8 representation
+      # for compatibility with other string conversions.
+      #
+      # The only sane way to handle URLs in MP3s is to restrict them to
+      # ASCII.
+      class UrlFrame < Frame
+        FRAMESPEC = [Specs::Latin1TextSpec.new('url')]
+
+        def to_s
+          url
+        end
+
+        def ==(other)
+          url == other
+        end
+
+        def _pprint
+          url
+        end
       end
 
-      # def method_missing(method_sym, *args, **kwargs)
-      #   if @text.methods.include? method_sym
-      #     @text.send(method_sym, *args)
-      #   end
-      # end
-
-      def _pprint
-        @text.join ' / '
+      class UrlFrameU < UrlFrame
+        def hash_key
+          "#{frame_id}:#{url}"
+        end
       end
 
-      def text
-        @text
+
+      # Paired text strings.
+      #
+      # Some ID3 frames pair text strings, to associate names with a more
+      # specific involvement in the song. The 'people' attribute of these
+      # frames contains a list of pairs::
+      #
+      #      [['trumpet', 'Miles Davis'], ['bass', 'Paul Chambers']]
+      #
+      # Like text frames, these frames also have an encoding attribute.
+      class PairedTextFrame < Frame
+        FRAMESPEC = [
+            Specs::EncodingSpec.new('encoding'),
+            Specs::MultiSpec.new('people',
+                                 Specs::EncodedTextSpec.new('involvement'),
+                                 Specs::EncodedTextSpec.new('person'))
+        ]
+
+        def ==(other)
+          people == other
+        end
+      end
+
+      # Binary data
+      #
+      # The 'data' attribute contains the raw byte string
+      class BinaryFrame < Frame
+        FRAMESPEC = [Specs::BinaryDataSpec.new('data')]
+
+        def ==(other)
+          data == other
+        end
       end
     end
-
-    # Numerical text strings.
-    #
-    # The numeric value of these frames can be gotten with `to_i`, e.g.
-    # @example
-    #    frame = TLEN.new '12345'
-    #    length = frame.to_i
-    class NumericTextFrame < TextFrame
-      FRAMESPEC = [
-          Specs::EncodingSpec.new('encoding'),
-          Specs::MultiSpec.new('text', Specs::EncodedNumericPartTextSpec.new('text'), sep: "\u0000")
-      ]
-
-      # Get the numerical value of the string
-      def to_i
-        text[0].to_i
-      end
-      alias_method :+@, :to_i
-    end
-
-    # Multivalue numerical text strings
-    #
-    # These strings indicate 'part (e.g. track) X of Y', and `.to_i`
-    # returns the first value:
-    # @example
-    #    frame = TRCK('4/15')
-    #    track = frame.to_i # track == 4
-    class NumericPartTextFrame < TextFrame
-      FRAMESPEC = [
-          Specs::EncodingSpec.new('encoding'),
-          Specs::MultiSpec.new('text', Specs::EncodedNumericPartTextSpec.new('text'), sep: "\u0000")
-      ]
-
-      def to_i
-        text[0].split('/')[0].to_i
-      end
-      alias_method :+@, :to_i
-      alias_method :first, :to_i
-
-      def second
-        text[0].split('/')[1].to_i
-      end
-    end
-
-    # A list of time stamps.
-    #
-    # The 'text' attribute in this frame is a list of ID3TimeStamp
-    # objects, not a list of strings
-    class TimeStampTextFrame < TextFrame
-      FRAMESPEC = [
-          Specs::EncodingSpec.new('encoding'),
-          Specs::MultiSpec.new('text', Specs::TimeStampSpec.new('stamp'), sep: ','),
-      ]
-
-      def to_s
-        text.map { |stamp| stamp.text }.join(',')
-      end
-
-      def _pprint
-        text.map { |stamp| stamp.text }.join(' / ')
-      end
-    end
-
-    # A frame containing a URL string.
-    #
-    # The ID3 specification is silent about IRIs and normalized URL
-    # forms. Mutagen assumes all URLs in files are encoded as Latin 1,
-    # but string conversion of this frame returns a UTF-8 representation
-    # for compatibility with other string conversions.
-    #
-    # The only sane way to handle URLs in MP3s is to restrict them to
-    # ASCII.
-    class UrlFrame < Frame
-      FRAMESPEC = [Specs::Latin1TextSpec.new('url')]
-
-      def to_s
-        url
-      end
-
-      def ==(other)
-        url == other
-      end
-
-      def _pprint
-        url
-      end
-    end
-
-    class UrlFrameU < UrlFrame
-      def hash_key
-        "#{frame_id}:#{url}"
-      end
-    end
-
-
-    # Paired text strings.
-    #
-    # Some ID3 frames pair text strings, to associate names with a more
-    # specific involvement in the song. The 'people' attribute of these
-    # frames contains a list of pairs::
-    #
-    #      [['trumpet', 'Miles Davis'], ['bass', 'Paul Chambers']]
-    #
-    # Like text frames, these frames also have an encoding attribute.
-    class PairedTextFrame < Frame
-      FRAMESPEC = [
-          Specs::EncodingSpec.new('encoding'),
-          Specs::MultiSpec.new('people',
-                               Specs::EncodedTextSpec.new('involvement'),
-                               Specs::EncodedTextSpec.new('person'))
-      ]
-
-      def ==(other)
-        people == other
-      end
-    end
-
-    # Binary data
-    #
-    # The 'data' attribute contains the raw byte string
-    class BinaryFrame < Frame
-      FRAMESPEC = [Specs::BinaryDataSpec.new('data')]
-
-      def ==(other)
-        data == other
-      end
-    end
-
     module Frames
 
       # Album
-      class TALB < TextFrame
+      class TALB < ParentFrames::TextFrame
       end
 
       # Beats per Minute
-      class TBPM < NumericTextFrame
+      class TBPM < ParentFrames::NumericTextFrame
       end
 
       # Composer
-      class TCOM < TextFrame
+      class TCOM < ParentFrames::TextFrame
       end
 
       # Content type (Genre)
       #
       # ID3 has several ways genres can be represented; for convenience.
       # Use the 'genres' property rather than the 'text' attribute
-      class TCON < TextFrame
+      class TCON < ParentFrames::TextFrame
         GENRES = Mutagen::Constants::GENRES
 
         def genres
@@ -554,217 +557,217 @@ module Mutagen
       end
 
       # Copyright "(c)"
-      class TCOP < TextFrame
+      class TCOP < ParentFrames::TextFrame
       end
 
       #iTunes Compilation Flag
-      class TCMP < NumericTextFrame
+      class TCMP < ParentFrames::NumericTextFrame
       end
 
       # Date of recording (DDMM)
-      class TDAT < TextFrame
+      class TDAT < ParentFrames::TextFrame
       end
 
       # Encoding Time
-      class TDEN < TimeStampTextFrame
+      class TDEN < ParentFrames::TimeStampTextFrame
       end
 
 
       # iTunes Podcast Description
-      class TDES < TextFrame
+      class TDES < ParentFrames::TextFrame
       end
 
       # Original Release Time
-      class TDOR < TimeStampTextFrame
+      class TDOR < ParentFrames::TimeStampTextFrame
       end
 
       # Audio Delay (ms)
-      class TDLY < NumericTextFrame
+      class TDLY < ParentFrames::NumericTextFrame
       end
 
       # Recording Time
-      class TDRC < TimeStampTextFrame
+      class TDRC < ParentFrames::TimeStampTextFrame
       end
 
       # Release Time
-      class TDRL < TimeStampTextFrame
+      class TDRL < ParentFrames::TimeStampTextFrame
       end
 
 
       # Tagging Time
-      class TDTG < TimeStampTextFrame
+      class TDTG < ParentFrames::TimeStampTextFrame
       end
 
       # Encoder
-      class TENC < TextFrame
+      class TENC < ParentFrames::TextFrame
       end
 
       # Lyricist
-      class TEXT < TextFrame
+      class TEXT < ParentFrames::TextFrame
       end
 
       # File type
-      class TFLT < TextFrame
+      class TFLT < ParentFrames::TextFrame
       end
 
       # iTunes Podcast Identifier
-      class TGID < TextFrame
+      class TGID < ParentFrames::TextFrame
       end
 
 
       # Time of recording (HHMM)
-      class TIME < TextFrame
+      class TIME < ParentFrames::TextFrame
       end
 
       # Content group description
-      class TIT1 < TextFrame
+      class TIT1 < ParentFrames::TextFrame
       end
 
       # Title
-      class TIT2 < TextFrame
+      class TIT2 < ParentFrames::TextFrame
       end
 
 
       # Subtitle/Description refinement
-      class TIT3 < TextFrame
+      class TIT3 < ParentFrames::TextFrame
       end
 
       # Starting Key
-      class TKEY < TextFrame
+      class TKEY < ParentFrames::TextFrame
       end
 
 
       # Audio Languages
-      class TLAN < TextFrame
+      class TLAN < ParentFrames::TextFrame
       end
 
       # Audio Length (ms)
-      class TLEN < NumericTextFrame
+      class TLEN < ParentFrames::NumericTextFrame
       end
 
       # Source Media Type
-      class TMED < TextFrame
+      class TMED < ParentFrames::TextFrame
       end
 
       # Mood
-      class TMOO < TextFrame
+      class TMOO < ParentFrames::TextFrame
       end
 
 
       # Original Album
-      class TOAL < TextFrame
+      class TOAL < ParentFrames::TextFrame
       end
 
 
       # Original Filename
-      class TOFN < TextFrame
+      class TOFN < ParentFrames::TextFrame
       end
 
 
       # Original Lyricist
-      class TOLY < TextFrame
+      class TOLY < ParentFrames::TextFrame
       end
 
 
       # Original Artist/Performer
-      class TOPE < TextFrame
+      class TOPE < ParentFrames::TextFrame
       end
 
 
       # Original Release Year
-      class TORY < NumericTextFrame
+      class TORY < ParentFrames::NumericTextFrame
       end
 
 
       # Owner/Licensee
-      class TOWN < TextFrame
+      class TOWN < ParentFrames::TextFrame
       end
 
 
       # Lead Artist/Performer/Soloist/Group
-      class TPE1 < TextFrame
+      class TPE1 < ParentFrames::TextFrame
       end
 
 
       # Band/Orchestra/Accompaniment
-      class TPE2 < TextFrame
+      class TPE2 < ParentFrames::TextFrame
       end
 
       # Conductor
-      class TPE3 < TextFrame
+      class TPE3 < ParentFrames::TextFrame
       end
 
       # Interpreter/Remixer/Modifier
-      class TPE4 < TextFrame
+      class TPE4 < ParentFrames::TextFrame
       end
 
       # Part of set
-      class TPOS < NumericPartTextFrame
+      class TPOS < ParentFrames::NumericPartTextFrame
       end
 
       # Produced (P)
-      class TPRO < TextFrame
+      class TPRO < ParentFrames::TextFrame
       end
 
       # Publisher
-      class TPUB < TextFrame
+      class TPUB < ParentFrames::TextFrame
       end
 
       # Track Number
-      class TRCK < NumericPartTextFrame
+      class TRCK < ParentFrames::NumericPartTextFrame
       end
 
       # Recording Dates
-      class TRDA < TextFrame
+      class TRDA < ParentFrames::TextFrame
       end
 
       # Internet Radio Station Name
-      class TRSN < TextFrame
+      class TRSN < ParentFrames::TextFrame
       end
 
       # Internet Radio Station Owner
-      class TRSO < TextFrame
+      class TRSO < ParentFrames::TextFrame
       end
 
       # Size of audio data  < bytes)
-      class TSIZ < NumericTextFrame
+      class TSIZ < ParentFrames::NumericTextFrame
       end
 
       # iTunes Album Artist Sort
-      class TSO2 < TextFrame
+      class TSO2 < ParentFrames::TextFrame
       end
 
       # Album Sort Order key
-      class TSOA < TextFrame
+      class TSOA < ParentFrames::TextFrame
       end
 
       # iTunes Composer Sort
-      class TSOC < TextFrame
+      class TSOC < ParentFrames::TextFrame
       end
 
       # Perfomer Sort Order key
-      class TSOP < TextFrame
+      class TSOP < ParentFrames::TextFrame
       end
 
       # Title Sort Order key
-      class TSOT < TextFrame
+      class TSOT < ParentFrames::TextFrame
       end
 
 
       # International Standard Recording Code  < ISRC)
-      class TSRC < TextFrame
+      class TSRC < ParentFrames::TextFrame
       end
 
       # Encoder settings
-      class TSSE < TextFrame
+      class TSSE < ParentFrames::TextFrame
       end
 
       # Set Subtitle
-      class TSST < TextFrame
+      class TSST < ParentFrames::TextFrame
       end
 
       # Year of recording
-      class TYER < NumericTextFrame
+      class TYER < ParentFrames::NumericTextFrame
       end
 
       # User-defined text data.
@@ -772,7 +775,7 @@ module Mutagen
       # TXXX frames have a 'desc' attribute which is set to any Unicode
       # value (though the encoding of the text and the description must be
       # the same). Many taggers use this frame to store freeform keys.
-      class TXXX < TextFrame
+      class TXXX < ParentFrames::TextFrame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::EncodedTextSpec.new('desc'),
@@ -780,7 +783,7 @@ module Mutagen
         ]
 
         def hash_key
-          "#{frame_id}:#{desc}"
+          "#{frame_id}:#{@desc}"
         end
 
         def _pprint
@@ -789,45 +792,45 @@ module Mutagen
       end
 
       # Commercial Information
-      class WCOM < UrlFrameU
+      class WCOM < ParentFrames::UrlFrameU
       end
 
       # Copyright Information
-      class WCOP < UrlFrame
+      class WCOP < ParentFrames::UrlFrame
       end
 
       # iTunes Podcast Feed
-      class WFED < UrlFrame
+      class WFED < ParentFrames::UrlFrame
       end
 
       # Official File Information
-      class WOAF < UrlFrame
+      class WOAF < ParentFrames::UrlFrame
       end
 
       # Official Artist/Performer Information
-      class WOAR < UrlFrameU
+      class WOAR < ParentFrames::UrlFrameU
       end
 
       # Official Source Information
-      class WOAS < UrlFrame
+      class WOAS < ParentFrames::UrlFrame
       end
 
       # Official Internet Radio Information
-      class WORS < UrlFrame
+      class WORS < ParentFrames::UrlFrame
       end
 
       # Payment Information
-      class WPAY < UrlFrame
+      class WPAY < ParentFrames::UrlFrame
       end
 
       # Official Publisher Information
-      class WPUB < UrlFrame
+      class WPUB < ParentFrames::UrlFrame
       end
 
       # User defined URL data
       #
       # Like TXX, this has a freeform description associated with it
-      class WXXX < UrlFrame
+      class WXXX < ParentFrames::UrlFrame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::EncodedTextSpec.new('desc'),
@@ -840,11 +843,11 @@ module Mutagen
       end
 
       # Involved People list
-      class TIPL < PairedTextFrame
+      class TIPL < ParentFrames::PairedTextFrame
       end
 
       # Musicians Credits List
-      class TMCL < PairedTextFrame
+      class TMCL < ParentFrames::PairedTextFrame
       end
 
       # Involved People List
@@ -852,11 +855,11 @@ module Mutagen
       end
 
       # Binary dump of CD's TOC
-      class MCDI < BinaryFrame
+      class MCDI < ParentFrames::BinaryFrame
       end
 
       # Event timing code
-      class ETCO < Frame
+      class ETCO < ParentFrames::Frame
         FRAMESPEC = [
             Specs::ByteSpec.new('format'),
             Specs::KeyEventSpec.new('events')
@@ -871,7 +874,7 @@ module Mutagen
       #
       # This frame's attributes may be changed in the future based
       # on feedback from real-world use
-      class MLLT < Frame
+      class MLLT < ParentFrames::Frame
         FRAMESPEC = [
             Specs::SizedIntegerSpec.new('frames', 2),
             Specs::SizedIntegerSpec.new('bytes', 3),
@@ -891,7 +894,7 @@ module Mutagen
       #
       # This frame's attributes may be changed in the future based on
       # feedback from real-world use.
-      class SYTC < Frame
+      class SYTC < ParentFrames::Frame
         FRAMESPEC = [
             Specs::ByteSpec.new('format'),
             Specs::BinaryDataSpec.new('data')
@@ -906,7 +909,7 @@ module Mutagen
       #
       # Lyrics have a three letter ISO language code ('lang'), a
       # description ('desc'), and a block of plain text ('text')
-      class USLT < Frame
+      class USLT < ParentFrames::Frame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::StringSpec.new('lang', 3),
@@ -924,7 +927,7 @@ module Mutagen
       end
 
       # Synchronized lyrics/text
-      class SYLT < Frame
+      class SYLT < ParentFrames::Frame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::StringSpec.new('lang', 3),
@@ -951,7 +954,7 @@ module Mutagen
       #
       # User comment frames have a description, like TXXX, and also
       # a three letter ISO languge code in the 'lang' attribute.
-      class COMM < TextFrame
+      class COMM < ParentFrames::TextFrame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::StringSpec.new('lang', 3),
@@ -982,7 +985,7 @@ module Mutagen
       #
       # When storing ReplayGain tags, use descriptions of 'album' and
       # 'track' on channel 1.
-      class RVA2 < Frame
+      class RVA2 < ParentFrames::Frame
 
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('desc'),
@@ -1019,7 +1022,7 @@ module Mutagen
       # method -- interpolation method (0 = band, 1 = linear)
       # desc -- identifying description
       # adjustments -- list of (frequency, vol_adjustment) pairs
-      class EQU2 < Frame
+      class EQU2 < ParentFrames::Frame
         FRAMESPEC = [
             Specs::ByteSpec.new('method'),
             Specs::Latin1TextSpec.new('des'),
@@ -1039,7 +1042,7 @@ module Mutagen
       # class EQUA: unsupported
 
       # Reverb
-      class RVRB < Frame
+      class RVRB < ParentFrames::Frame
         FRAMESPEC = [
             Specs::SizedIntegerSpec.new('left', 2),
             Specs::SizedIntegerSpec.new('right', 2),
@@ -1069,7 +1072,7 @@ module Mutagen
       # * data -- raw image data, as a byte string
       #
       # Mutagen will automatically compress large images when saving tags.
-      class APIC < Frame
+      class APIC < ParentFrames::Frame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::Latin1TextSpec.new('mime'),
@@ -1093,7 +1096,7 @@ module Mutagen
       # file has been played.
       #
       # This frame is basically obsoleted by POPM.
-      class PCNT < Frame
+      class PCNT < ParentFrames::Frame
         FRAMESPEC = [Specs::IntegerSpec.new('count')]
 
         def ==(other)
@@ -1123,7 +1126,7 @@ module Mutagen
       # * email -- email this POPM frame is for
       # * rating -- rating from 0 to 255
       # * count -- number of times the files has been played (optional)
-      class POPM < FrameOpt
+      class POPM < ParentFrames::FrameOpt
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('email'),
             Specs::ByteSpec.new('rating')
@@ -1163,7 +1166,7 @@ module Mutagen
       # * filename -- suggested filename if extracted
       # * desc -- text description of the data
       # * data -- raw data, as a byte string
-      class GEOB < Frame
+      class GEOB < ParentFrames::Frame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::Latin1TextSpec.new('mime'),
@@ -1190,7 +1193,7 @@ module Mutagen
       # * offset -- the location of the next ID3 tag, if any
       #
       # Mutagen will not find the next tag itself.
-      class RBUF < FrameOpt
+      class RBUF < ParentFrames::FrameOpt
         FRAMESPEC = [Specs::SizedIntegerSpec.new('size', 3)]
 
         OPTIONALSPEC = [
@@ -1222,7 +1225,7 @@ module Mutagen
       # * data -- data required for decryption (optional)
       #
       # Mutagen cannot decrypt files.
-      class AENC < FrameOpt
+      class AENC < ParentFrames::FrameOpt
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('owner'),
             Specs::SizedIntegerSpec.new('preview_start', 2),
@@ -1251,7 +1254,7 @@ module Mutagen
       # * frameid -- the ID of the linked frame
       # * url -- the location of the linked frame
       # * data -- further ID information for the frame
-      class LINK < FrameOpt
+      class LINK < ParentFrames::FrameOpt
         FRAMESPEC = [
             Specs::StringSpec.new('frameid', 4),
             Specs::Latin1TextSpec.new('url')
@@ -1276,7 +1279,7 @@ module Mutagen
       #
       # * format -- format of the position attribute (frames or milliseconds)
       # * position -- current position of the file
-      class POSS < Frame
+      class POSS < ParentFrames::Frame
         FRAMESPEC = [
             Specs::ByteSpec.new('format'),
             Specs::IntegerSpec.new('position')
@@ -1301,7 +1304,7 @@ module Mutagen
       #
       # * owner -- format/type of identifier
       # * data -- identifier
-      class UFID < Frame
+      class UFID < ParentFrames::Frame
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('owner'),
             Specs::BinaryDataSpec.new('data'),
@@ -1335,7 +1338,7 @@ module Mutagen
       # * encoding -- text encoding
       # * lang -- ISO three letter language code
       # * text -- licensing terms for the audio
-      class USER < Frame
+      class USER < ParentFrames::Frame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::StringSpec.new('lang', 3),
@@ -1360,7 +1363,7 @@ module Mutagen
       end
 
       # Ownership Frame
-      class OWNE < Frame
+      class OWNE < ParentFrames::Frame
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::Latin1TextSpec.new('price'),
@@ -1378,7 +1381,7 @@ module Mutagen
       end
 
       # Commercial Frame
-      class COMR < FrameOpt
+      class COMR < ParentFrames::FrameOpt
         FRAMESPEC = [
             Specs::EncodingSpec.new('encoding'),
             Specs::Latin1TextSpec.new('price'),
@@ -1407,7 +1410,7 @@ module Mutagen
       #
       # The standard does not allow multiple ENCR frames with the same owner
       # or the same method. Mutagen only verifies that the owner is unique.
-      class ENCR < Frame
+      class ENCR < ParentFrames::Frame
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('owner'),
             Specs::ByteSpec.new('method'),
@@ -1428,7 +1431,7 @@ module Mutagen
       end
 
       # Group identification registration
-      class GRID < FrameOpt
+      class GRID < ParentFrames::FrameOpt
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('owner'),
             Specs::ByteSpec.new('group')
@@ -1458,7 +1461,7 @@ module Mutagen
       end
 
       # Private frame.
-      class PRIV < Frame
+      class PRIV < ParentFrames::Frame
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('owner'),
             Specs::BinaryDataSpec.new('data')
@@ -1486,7 +1489,7 @@ module Mutagen
       end
 
       # Signature frame
-      class SIGN < Frame
+      class SIGN < ParentFrames::Frame
         FRAMESPEC = [
             Specs::ByteSpec.new('group'),
             Specs::BinaryDataSpec.new('sig')
@@ -1508,7 +1511,7 @@ module Mutagen
       #  Seek frame.
       #
       # Mutagen does not find tags at seek offsets.
-      class SEEK < Frame
+      class SEEK < ParentFrames::Frame
         FRAMESPEC = [Specs::IntegerSpec.new('offset')]
 
         def to_i
@@ -1528,7 +1531,7 @@ module Mutagen
       #
       # Attributes: S, L, N, b, and Fi. For the meaning of these, see
       # the ID3v2.4 specification. Fi is a list of integers.
-      class ASPI < Frame
+      class ASPI < ParentFrames::Frame
         FRAMESPEC = [
             Specs::SizedIntegerSpec.new("S", 4),
             Specs::SizedIntegerSpec.new("L", 4),
@@ -1792,7 +1795,7 @@ module Mutagen
       end
 
       # Encrypted meta frame
-      class CRM < Frame
+      class CRM < ParentFrames::Frame
         FRAMESPEC = [
             Specs::Latin1TextSpec.new('owner'),
             Specs::Latin1TextSpec.new('desc'),

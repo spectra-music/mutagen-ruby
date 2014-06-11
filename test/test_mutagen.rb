@@ -1,4 +1,4 @@
-require 'minitest_helper'
+require 'test_helper'
 
 class TestMetadata < MiniTest::Test
   class FakeMeta < Mutagen::Metadata

@@ -170,6 +170,25 @@ module HashMixin
   end
 end
 
+module DictProxy
+  def [](key)
+    @dict[key]
+  end
+
+  def []=(key, value)
+    @dict[key] = value
+  end
+
+  def delete(key)
+    @dict.delete(key)
+  end
+
+  def keys
+    @dict.keys
+  end
+end
+
+
 # C character buffer to Ruby numeric type conversions
 module CData
   # Convert from
