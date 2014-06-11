@@ -31,7 +31,7 @@ module HashMixin
     keys.each(&block)
   end
 
-  def has_key(key)
+  def has_key?(key)
     not self[key].nil?
   end
 
@@ -171,6 +171,7 @@ module HashMixin
 end
 
 module DictProxy
+  include HashMixin
   def [](key)
     @dict[key]
   end

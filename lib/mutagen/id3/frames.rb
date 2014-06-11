@@ -138,7 +138,7 @@ module Mutagen
 
         # Return a human-readable representation of the frame
         def pprint
-          inspect
+          "#{self.class}=#{self.to_s}"
         end
 
         def _pprint
