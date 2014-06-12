@@ -186,7 +186,7 @@ module Mutagen
           if data.size < term.size
             return '', ret
           else
-            return data.encode, ret
+            return data, ret
           end
         end
 

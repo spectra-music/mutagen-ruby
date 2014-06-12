@@ -57,7 +57,6 @@ module Mutagen
       super(*args, ** kwargs)
     end
 
-    private
     def fullread(size)
       unless @fileobj.nil?
         raise Mutagen::ValueError, "Requested bytes (#{size}) less than zero" if size < 0
@@ -71,7 +70,6 @@ module Mutagen
       data
     end
 
-    public
     # Load tags from a filename
     #
     # @param filename [String] filename to load tag data from
@@ -208,7 +206,6 @@ module Mutagen
       loaded_frame(frame)
     end
 
-    private
     def load_header
       data                         = fullread(10)
       id3, vmaj, vrev, flags, size = data.unpack('a3C3a4')

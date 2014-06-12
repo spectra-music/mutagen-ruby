@@ -159,5 +159,46 @@ class ID3Loading < MiniTest::Test
     assert_equal 1, id3.instance_variable_get('@extsize')
     assert_equal "\x5a", id3.instance_variable_get("@extdata")
   end
+
+  def test_header_2_4_extended_unsynch_size
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj',StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00\x00\x00\x00\xFF\x5a"))
+    assert_raises(ValueError) { id3.send(:load_header) }
+  end
+
+  def test_header_2_4_extended_but_not
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj',StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00TIT1\x00\x00\x00\x01a"))
+    id3.send :load_header
+    assert_equal 0, id3.instance_variable_get("@extsize")
+    assert_equal '', id3.instance_variable_get("@extdata")
+  end
+
+  def test_header_2_4_extended_but_not_but_not_tag
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj',StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00TIT9"))
+    assert_raises(EOFError) { id3.send :load_header }
+  end
+
+  def test_header_2_3_extended
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x40\x00\x00\x00\x00\x00\x00\x00\x06\x00\x00\x56\x78\x9a\xbc"))
+    id3.send(:load_header)
+    assert_equal 6, id3.instance_variable_get('@extsize')
+    assert_equal "\x00\x00\x56\x78\x9a\xbc".b, id3.instance_variable_get("@extdata")
+  end
+
+  def test_unsynch
+    id3 = ID3.new
+    id3.instance_variable_set('@version', ID3::V24)
+    id3.instance_variable_set('@flags', 0x80)
+    badsync = "\x00\xff\x00ab\x00".b
+    id3.send(:load_framedata,
+             ID3::Frames.const_get(:TPE2),
+             0, badsync).to_a
+    assert_equal "\xffab".b, id3.send(:load_framedata,
+                                      ID3::Frames.const_get(:TPE2),
+                                      0, badsync).to_a.first
+  end
 end
 

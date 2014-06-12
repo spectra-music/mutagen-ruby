@@ -19,9 +19,9 @@ module Mutagen
 
     module Unsynch
       def self.decode(value)
-        output = []
+        output = ''.b
         safe   = true
-        value.each do |val|
+        value.each_byte do |val|
           if safe
             output << val
             safe = (val != 0xFF)
@@ -39,7 +39,7 @@ module Mutagen
       end
 
       def self.encode(value)
-        output = []
+        output = ''.b
         safe   = true
         value.each do |val|
           if safe
