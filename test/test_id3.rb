@@ -2,9 +2,9 @@ require_relative 'test_helper'
 include Mutagen
 
 
-_22 = ID3.new; _22.version = [2,2,0]
-_23 = ID3.new; _23.version = [2,3,0]
-_24 = ID3.new; _24.version = [2,4,0]
+_22 = ID3.new; _22.instance_variable_set('@version', ID3::V22)
+_23 = ID3.new; _23.instance_variable_set('@version', ID3::V23)
+_24 = ID3.new; _24.instance_variable_set('@version', ID3::V24)
 
 class ID3GetSetDel < MiniTest::Test
   def setup
@@ -66,6 +66,98 @@ class ID3GetSetDel < MiniTest::Test
     assert_equal t2, @i['FOOB:az']
     assert_includes [[t,t2],[t2,t]], @i.get_all('FOOB')
     assert_equal [t,t2].to_set, @i.get_all('FOOB').to_set
+  end
+end
+
+class ID3Loading < MiniTest::Test
+  EMPTY = File.expand_path('../data/emptyfile.mp3', __FILE__)
+  SILENCE = File.expand_path('../data/silence-44-s.mp3', __FILE__)
+
+  def test_empty_file
+    # assert_raises(Mutagen::ValueError) { ID3.new(filename:name) }
+    assert_raises(Mutagen::ID3::ID3NoHeaderError) { ID3.new(filename:EMPTY) }
+    #from_name = ID3(name)
+    #obj = open(name, 'rb')
+    #from_obj = ID3(fileobj=obj)
+    #self.assertEquals(from_name, from_explicit_name)
+    #self.assertEquals(from_name, from_obj)
+  end
+
+  def test_nonexistant_file
+    name = File.expand_path("../data/does/not/exist")
+    assert_raises(Errno::ENOENT) { ID3.new(name) }
+  end
+
+  def test_header_empty
+    id3 = ID3.new
+    id3.instance_variable_set("@fileobj", File.open(EMPTY, 'r'))
+    assert_raises(EOFError) { id3.send(:load_header)}
+  end
+
+
+  def test_header_silence
+    id3 = ID3.new
+    id3.instance_variable_set("@fileobj", File.open(SILENCE, 'r'))
+    id3.send(:load_header)
+    assert_equal ID3::V23, id3.version
+    assert_equal 1314, id3.size
+  end
+
+  def test_header_2_4_invalid_flags
+    id3 = ID3.new
+    id3.instance_variable_set("@fileobj", StringIO.new("ID3\x04\x00\x1f\x00\x00\x00\x00"))
+    exception = assert_raises(ValueError) { id3.send(:load_header) }
+    assert_equal ' has invalid flags 0x1f', exception.message
+  end
+
+  def test_header_2_4_unsynch_flags
+    id3 = ID3.new
+    id3.instance_variable_set("@fileobj", StringIO.new("ID3\x04\x00\x10\x00\x00\x00\xFF"))
+    exception = assert_raises(ValueError) { id3.send(:load_header) }
+    assert_equal 'Header size not synchsafe', exception.message
+  end
+
+  def test_header_2_4_allow_footer
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x04\x00\x10\x00\x00\x00\x00"))
+    id3.send(:load_header)
+  end
+
+  def test_header_2_3_invalid_flags
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x1f\x00\x00\x00\x00"))
+    ex = assert_raises(ValueError) { id3.send(:load_header) }
+    assert_equal ' has invalid flags 0x1f', ex.message
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x0f\x00\x00\x00\x00"))
+    ex = assert_raises(ValueError) { id3.send(:load_header) }
+    assert_equal ' has invalid flags 0xf', ex.message
+  end
+
+  def test_header_2_2
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x02\x00\x00\x00\x00\x00\x00"))
+    id3.send :load_header
+    assert_equal ID3::V22, id3.version
+  end
+
+  def test_header_2_1
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x01\x00\x00\x00\x00\x00\x00"))
+    assert_raises(ID3::ID3UnsupportedVersionError) { id3.send :load_header }
+  end
+
+  def test_header_too_small
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x01\x00\x00\x00\x00\x00"))
+    assert_raises(EOFError) { id3.send(:load_header) }
+  end
+
+  def test_header_2_4_extended
+    id3 = ID3.new
+    id3.instance_variable_set('@fileobj', StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00\x00\x00\x00\x05\x5a"))
+    id3.send(:load_header)
+    assert_equal 1, id3.instance_variable_get('@extsize')
+    assert_equal "\x5a", id3.instance_variable_get("@extdata")
   end
 end
 

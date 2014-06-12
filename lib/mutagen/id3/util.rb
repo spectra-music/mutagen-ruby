@@ -1,20 +1,20 @@
 module Mutagen
   class ID3 < Mutagen::Metadata
-    class ID3NoHeaderError < ValueError;
+    class ID3NoHeaderError < ValueError
     end
-    class ID3BadUnsynchData < ValueError;
+    class ID3BadUnsynchData < ValueError
     end
-    class ID3BadCompressedData < ValueError;
+    class ID3BadCompressedData < ValueError
     end
-    class ID3TagError < ValueError;
+    class ID3TagError < ValueError
     end
-    class ID3UnsupportedVersionError < ValueError;
+    class ID3UnsupportedVersionError < NotImplementedError
     end
-    class ID3EncryptionUnsupportedError < ValueError;
+    class ID3EncryptionUnsupportedError < NotImplementedError
     end
-    class ID3JunkFrameError <ValueError;
+    class ID3JunkFrameError < ValueError
     end
-    class ID3Warning < ValueError;
+    class ID3Warning < ValueError
     end
 
     module Unsynch
