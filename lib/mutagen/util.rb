@@ -142,7 +142,7 @@ module HashMixin
       return other == self
     end
 
-    return false unless other.size == size
+    return false unless other.length == length
 
     each_pair do |key, value|
       # Other doesn't even have this key
@@ -166,9 +166,11 @@ module HashMixin
     items <=> other_items
   end
 
-  def size
-    keys.size
+  def length
+    keys.length
   end
+
+  alias_method :size, :length
 end
 
 module DictProxy

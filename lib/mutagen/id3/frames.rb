@@ -83,7 +83,7 @@ module Mutagen
           new_kwargs = {}
           self.class::FRAMESPEC.each do |checker|
             name             = checker.name
-            value            = instance_variable_get('@'+name)
+            value            = instance_variable_get("@#{name}")
             new_kwargs[name] = checker._validate23(value, ** kwargs)
           end
           self.class.new(** new_kwargs)
@@ -105,7 +105,7 @@ module Mutagen
         def repr
           kw = []
           self.class::FRAMESPEC.each do |attr|
-            kw << "#{attr.name} => #{instance_variable_get('@'+attr.name)}"
+            kw << "#{attr.name} => #{instance_variable_get("@#{attr.name}")}"
           end
           "#{self.class.to_s}.new(#{kw.join(', ')})"
         end
@@ -113,13 +113,13 @@ module Mutagen
         def read_data(data)
           odata = data
           self.class::FRAMESPEC.each do |reader|
-            raise ID3JunkFrameError if data.emtpy?
+            raise ID3JunkFrameError if data.empty?
             begin
               value, data = reader.read(self, data)
               #rescue
               #  raise ID3JunkFrameError
             end
-            instance_variable_set('@'+reader.name, value)
+            instance_variable_set("@#{reader.name}", value)
           end
           leftover = Mutagen.strip_arbitrary(data, "\x00")
           unless leftover.empty?
@@ -157,8 +157,8 @@ module Mutagen
 
         # Construct this ID3 frame from raw string dta
         def self.from_data(id3, tflags, data)
-          if id3._V24 <= id3.version
-            if tflags & (Frame::FLAG24_COMPRESS | Frame::FLAG24_DATALEN)
+          if ID3::V24 <= id3.version
+            if tflags & (Frame::FLAG24_COMPRESS | Frame::FLAG24_DATALEN) != 0
               # The data length int is syncsafe in 2.4 (but not 2.3).
               # However, we don't actually need the data length int,
               # except to work around a QL 0.12 bug, and in that case
@@ -166,15 +166,15 @@ module Mutagen
               datalen_bytes = data[0...4]
               data          = data[4..-1]
             end
-            if tflags & Frame::FLAG24_UNSYNCH or id3.f_unsynch
+            if tflags & Frame::FLAG24_UNSYNCH != 0 or id3.f_unsynch
               begin
                 data = Unsynch.decode data
               rescue Mutagen::ValueError => err
                 raise ID3BadUnsynchData, "#{err}:#{data}" if id3.PEDANTIC
               end
             end
-            raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG24_ENCRYPT
-            if tflags & Frame::FLAG24_COMPRESS
+            raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG24_ENCRYPT != 0
+            if tflags & Frame::FLAG24_COMPRESS != 0
               begin
                 data = Zlib::Deflate(data)
               rescue Zlib::Error
@@ -182,30 +182,30 @@ module Mutagen
                 # write the 4 bytes of uncompressed size. Compensate.
                 data = datalen_bytes + data
                 begin
-                  data = Zlib::Deflate(data)
+                  data = Zlib::deflate(data)
                 rescue Zlib::Error => err
                   raise ID3BadCompressedData, "#{err}: #{data}" if id3.PEDANTIC
                 end
               end
             end
-          elsif id3._V23 <= id3.version
-            if tflags & Frame::FLAG23_COMPRESS
+          elsif ID3::V23 <= id3.version
+            if tflags & Frame::FLAG23_COMPRESS != 0
               usize, _ = unpack('L>', data[0...4])
               data     = data[4..-1]
             end
-            raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG23_ENCRYPT
-            if tflags & Frame::FLAG23_COMPRESS
+            raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG23_ENCRYPT != 0
+            if tflags & Frame::FLAG23_COMPRESS != 0
               begin
-                data = Zlib::Deflate(data)
+                data = Zlib::deflate(data)
               rescue Zlib::Error => err
                 raise ID3BadCompressedData, "#{err}: #{data}"
               end
             end
           end
-          frame = self.class.new
-          frame.instance_variable_set(:raw_data, data)
+          frame = new # new instance of whatever we are
+          frame.instance_variable_set('@raw_data', data)
           frame.singleton_class.class_eval { attr_reader :raw_data }
-          frame.instance_variable_set(:flags, tflags)
+          frame.instance_variable_set('@flags', tflags)
           frame.singleton_class.class_eval { attr_reader :flags }
           frame.read_data(data)
           frame
@@ -305,6 +305,10 @@ module Mutagen
 
         def to_s
           @text.join("\u0000")
+        end
+
+        def to_a
+          @text
         end
 
         def ==(other)

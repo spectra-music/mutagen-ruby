@@ -41,37 +41,35 @@ module Mutagen
     include Mutagen::DictProxy
 
     PEDANTIC = true
-    V24 = [2, 4, 0]
-    V23 = [2, 3, 0]
-    V22 = [2, 2, 0]
-    V11 = [1, 1]
+    V24      = Gem::Version.new "2.4.0"
+    V23      = Gem::Version.new "2.3.0"
+    V22      = Gem::Version.new "2.2.0"
+    V11      = Gem::Version.new "1.1"
 
-    attr_accessor :version
+    attr_reader :version, :size
 
-    def initialize(*args, **kwargs)
+    def initialize(*args, ** kwargs)
       @filename, @crc, @unknown_version = nil
-      @size, @flags, @readbytes = 0
+      @size, @flags, @readbytes         = 0, 0, 0
 
-      @dict = {}  # Need this for our DictProxy
+      @dict           = {} # Need this for our DictProxy
       @unknown_frames = []
-      super(*args, **kwargs)
+      super(*args, ** kwargs)
     end
 
-    private
     def fullread(size)
       unless @fileobj.nil?
         raise Mutagen::ValueError, "Requested bytes (#{size}) less than zero" if size < 0
         if size > @fileobj.size
-          raise EOFError, ('Requested %#x of %#x (%s)' % [size.to_i, @fileobj.size, filename])
+          raise EOFError, ('Requested %#x of %#x (%s)' % [size.to_i, @fileobj.size, @filename])
         end
       end
       data = @fileobj.read size
-      raise EOFError if data.size != size
+      raise EOFError if not data.nil? and data.size != size
       @readbytes += size
       data
     end
 
-    public
     # Load tags from a filename
     #
     # @param filename [String] filename to load tag data from
@@ -80,53 +78,59 @@ module Mutagen
     #                         intend to save, this must be true or you have to call
     #                         update_to_v23 / update_to_v24 manually.
     # @param v2_version [Fixnum] the minor version number of v2 to use
-    def load(filename, known_frames:nil, translate:true, v2_version:4)
+    def load(filename, known_frames: nil, translate: true, v2_version: 4)
       raise Mutagen::ValueError, 'Only 3 and 4 possible for v2_version' unless [3, 4].include? v2_version
-      @filename = filename
+      @filename     = case filename
+                      when Hash;
+                        filename[:filename]
+                      else
+                        filename
+                      end
       @known_frames = known_frames
-      File.open(filename, 'r') do |f|
-        @fileobj = f
+      @fileobj      = File.open(@filename, 'r')
+      begin
+        load_header
+      rescue EOFError
+        @size = 0
+        raise ID3NoHeaderError, "#{@filename} too small (#{@fileobj.size} bytes)"
+      rescue ID3NoHeaderError, ID3UnsupportedVersionError => err
+        @size = 0
         begin
-          load_header
-        rescue EOFError
-          @size = 0
-          raise ID3NoHeaderError, "#{filename} too small (#{f.size} bytes)"
-        rescue ID3NoHeaderError, ID3UnsupportedVersionError => err
-          @size = 0
-          begin
-            f.seek(-128, IO::SEEK_END)
-          rescue Errno::EINVAL
+          @fileobj.seek(-128, IO::SEEK_END)
+        rescue Errno::EINVAL
+          raise err
+        else
+          frames = ParseID3v1(@fileobj.read(128))
+          if frames.nil?
             raise err
           else
-            frames = ParseID3v1(f.read(128))
-            if frames.nil?
-              raise err
-            else
-              @version = V11
-              frames.values.each { |v| add v }
-            end
-          end
-        else
-          frames = @known_frames
-          if frames.nil?
-            if V23 <= @version
-              frames = Frames
-            elsif V24 <= @version
-              frames = Frames_2_2
-            end
-          end
-          data = fullread(@size - 10)
-          read_frames(data, frames:frames).each do |frame|
-            if frame.is_a? Frame
-              add frame
-            else
-              @unknown_frames << frame
-            end
+            @version = V11
+            frames.values.each { |v| add v }
           end
         end
+      else
+        frames = @known_frames
+        if frames.nil?
+          if V23 <= @version
+            frames = Frames
+          elsif V24 <= @version
+            frames = Frames_2_2
+          end
+        end
+        data = fullread(@size - 10)
+        read_frames(data, frames: frames).each do |frame|
+          if frame.is_a? Frame
+            add frame
+          else
+            @unknown_frames << frame
+          end
+        end
+      ensure
+        @fileobj.close
+        @fileobj  = nil
+        @filesize = nil
+        #(v2_version == 3) ? update_to_v23 : update_to_v24 if translate
       end
-      @fileobj = nil
-      (v2_version == 3) ? update_to_v23 : update_to_v24 if translate
     end
 
     # Return all frames with a given name (the list may be empty).
@@ -146,7 +150,7 @@ module Mutagen
         self[key]
       else
         key += ':'
-        each_pair.map{|s, v| v if s.start_with? key }.compact
+        each_pair.map { |s, v| v if s.start_with? key }.compact
       end
     end
 
@@ -182,14 +186,14 @@ module Mutagen
     #     ``POPM=user@example.org=3 128/255``
     def pprint
       # based on Frame.pprint (but we can't call unbound methods)
-      frames = values.map{ |v| Frame.pprint(v) }.sort.join("\n")
+      values.map { |v| Frame.pprint(v) }.sort.join("\n")
     end
 
     # @deprecated use the add method
     def loaded_frame(tag)
       warn '[DEPRECATION] `loaded_frame` is deprecated.  Please use `add` instead.'
       # turn 2.2 into 2.3/2.4 tags
-      tag = tag.class.superclass.new(tag) if tag.class.to_s.size == 3
+      tag                = tag.class.superclass.new(tag) if tag.class.to_s.size == 3
       self[tag.hash_key] = tag
     end
 
@@ -202,26 +206,27 @@ module Mutagen
       loaded_frame(frame)
     end
 
-    private
     def load_header
-      data = fullread(10)
+      data                         = fullread(10)
       id3, vmaj, vrev, flags, size = data.unpack('a3C3a4')
-      @flags = flags
-      @size = BitPaddedInteger.new(size) + 10
-      @version = [2, vmaj, vrev]
+      @flags                       = flags
+      @size                        = BitPaddedInteger.new(size).to_i + 10
+      @version                     = Gem::Version.new "2.#{vmaj}.#{vrev}"
       raise ID3NoHeaderError, "#{@filename} doesn't start with an ID3 tag" unless id3 == "ID3"
-      raise ID3UnsupportedVersionError, "#{@filename} ID3v2.#{vmaj} not supported" unless [2,3,4].include? vmaj
+      raise ID3UnsupportedVersionError, "#{@filename} ID3v2.#{vmaj} not supported" unless [2, 3, 4].include? vmaj
 
       if PEDANTIC
         raise Mutagen::ValueError, "Header size not synchsafe" unless BitPaddedInteger.has_valid_padding(size)
-        if (V24 <= @version or (V23 <= @version and @version < V24)) and (flags & 0x1f)
+        if V24 <= @version and (flags & 0x0f > 0)
+          raise Mutagen::ValueError, ("#{@filename} has invalid flags %#02x" % [flags])
+        elsif (V23 <= @version and @version < V24) and (flags & 0x1f > 0)
           raise Mutagen::ValueError, ("#{@filename} has invalid flags %#02x" % [flags])
         end
       end
 
-      unless @f_extended.nil?
+      if f_extended > 0
         extsize = fullread 4
-        if Frames.constants.include? extsize.to_sym
+        if not extsize.nil? and Frames.constants.include? extsize.to_sym
           # Some tagger sets the extended header flag but
           # doesn't write an extended header; in this case, the
           # ID3 data follows immediately. Since no extended
@@ -230,14 +235,14 @@ module Mutagen
           # completely lost anyway, this seems to be the most
           # correct check.
           # http://code.google.com/p/quodlibet/issues/detail?id=126
-          @flags ^= 0x40
+          @flags   ^= 0x40
           @extsize = 0
           @fileobj.seek(-4, IO::SEEK_CUR)
           @readbytes -= 4
         elsif @version >= V24
           # "Where the 'Extended header size' is the size of the whole
           # extended header, stored as a 32 bit synchsafe integer."
-          @extsize = BitPaddedInteger.new(extsize) - 4
+          @extsize = BitPaddedInteger.new(extsize).to_i - 4
           if PEDANTIC
             unless BitPaddedInteger.has_valid_padding(extsize)
               raise Mutagen::ValueError, 'Extended header size not synchsafe'
@@ -250,14 +255,14 @@ module Mutagen
         end
 
         if not @extsize.nil? and @extsize > 0
-          @extsize = fullread(@extsize)
+          @extdata = fullread(@extsize)
         else
-          @extsize = ""
+          @extdata = ""
         end
       end
     end
 
-    def determine_bpi(data, frames, empty:"\x00" * 10)
+    def determine_bpi(data, frames, empty: "\x00" * 10)
       if @version < V24
         Integer
       end
@@ -265,19 +270,19 @@ module Mutagen
       # spec says to use them, but iTunes has it wrong
 
       # count number of tags found as BitPaddedInt and how far past
-      o = 0
+      o     = 0
       asbpi = 0
-      flag = true
+      flag  = true
       while o < (data.size - 10)
         part = data[o...o+10]
         if part == empty
           bpioff = -((data.size - o) % 10)
-          flag = false
+          flag   = false
           break
         end
         name, size, flags = part.unpack('a4L>S>')
-        size = BitPaddedInteger(size)
-        o += 10 + size
+        size              = BitPaddedInteger(size)
+        o                 += 10 + size
         if frames.constants.include? name.to_sym
           asbpi += 1
         end
@@ -287,18 +292,18 @@ module Mutagen
       end
 
       # count number of tags found as int and how far past
-      o = 0
+      o     = 0
       asint = 0
-      flag = true
+      flag  = true
       while o < (data.size - 10)
         part = data[o...o + 10]
         if part == empty
           intoff = -((data.size - o) % 10)
-          flag = false
+          flag   = false
           break
         end
         name, size, flags = part.unpack('a4L>S>')
-        o += 10 + size
+        o                 += 10 + size
         if frames.constants.include? name.to_sym
           asint += 1
         end
@@ -336,9 +341,9 @@ module Mutagen
           if name.strip("\x00").empty?
             return
           end
-          size = bpi(size)
+          size      = bpi(size)
           framedata = data[10...10+size]
-          data = data[10+size..-1]
+          data      = data[10+size..-1]
           if size == 0
             next # drop empty frames
           end
@@ -362,16 +367,16 @@ module Mutagen
         while data > 0
           header = data[0...6]
           if (vals = header.unpack('a3a3')).include? nil
-            return              # not enough header
+            return # not enough header
           else
             name, size = vals
           end
-          size, _ = ("\x00" + size),unpack('L>')
+          size, _ = ("\x00" + size), unpack('L>')
           if name.strip("\x00").empty?
             return
           end
           framedata = data[6...6+size]
-          data = data[6+size..-1]
+          data      = data[6+size..-1]
           if size == 0
             next # drop empty frames
           end
@@ -426,17 +431,17 @@ module Mutagen
       end
 
       # Sort frames by 'importance'
-      order = %w(TIT2 TPE1 TRCK TALB TPOS TDRC TCON).each_with_index.to_a
-      last = order.size
+      order  = %w(TIT2 TPE1 TRCK TALB TPOS TDRC TCON).each_with_index.to_a
+      last   = order.size
       frames = items
       frames.sort_by! { |a| [order[a[0][0...4]] || last, a[0]] }
 
-      framedata = frames.each {|_, frame| save_frame(frame, version: version, v23_sep:v23_sep) }
+      framedata = frames.each { |_, frame| save_frame(frame, version: version, v23_sep: v23_sep) }
 
       # only write unknown frames if they were loaded from the version
       # we are saving with or upgraded it to
       if @unknown_version == version
-        framedata.push *@unknown_frames.select {|d| d.size > 10 }
+        framedata.push *@unknown_frames.select { |d| d.size > 10 }
       end
 
       framedata.join
