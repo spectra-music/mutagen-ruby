@@ -194,3 +194,24 @@ class BitPaddedIntegerTest < MiniTest::Test
     assert ID3::BitPaddedInteger.has_valid_padding(0x3f << 16, bits:6)
   end
 end
+
+class TestUnsynch < MiniTest::Test
+  def test_unsynch_encode
+    un = Mutagen::ID3::Unsynch
+    ["\xff\xff\xff\xff", "\xff\xf0\x0f\x00", "\xff\x00\x0f\xf0"].each do |d|
+      assert_equal d.b, un.decode(un.encode(d))
+      refute_equal d.b, un.encode(d)
+    end
+    assert_equal "\xff\x44".b, un.encode("\xff\x44")
+    assert_equal "\xff\x00\x00".b, un.encode("\xff\x00")
+  end
+
+  def test_unsych_decode
+    un = Mutagen::ID3::Unsynch
+    assert_raises(Mutagen::ValueError) { un.decode "\xff\xff\xff\xff" }
+    assert_raises(Mutagen::ValueError) { un.decode "\xff\xf0\x0f\x00" }
+    assert_raises(Mutagen::ValueError) { un.decode "\xff\xe0" }
+    assert_raises(Mutagen::ValueError) { un.decode "\xff" }
+    assert_equal "\xff\x44".b, un.decode("\xff\x44")
+  end
+end

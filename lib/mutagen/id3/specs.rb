@@ -1,6 +1,6 @@
 require 'mutagen/id3/util'
 module Mutagen
-  class ID3 < Mutagen::Metadata
+  module ID3
     module Specs
 
       class Spec

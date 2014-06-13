@@ -1,5 +1,5 @@
 module Mutagen
-  class ID3 < Mutagen::Metadata
+  module ID3
     class ID3NoHeaderError < ValueError
     end
     class ID3BadUnsynchData < ValueError
@@ -41,7 +41,7 @@ module Mutagen
       def self.encode(value)
         output = ''.b
         safe   = true
-        value.each do |val|
+        value.each_byte do |val|
           if safe
             output << val
             safe = false if val == 0xFF

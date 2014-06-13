@@ -1,13 +1,13 @@
 require_relative 'test_helper'
-include Mutagen
+include Mutagen::ID3
 
-ID3_22 = ID3.new; ID3_22.instance_variable_set('@version', ID3::V22)
-ID3_23 = ID3.new; ID3_23.instance_variable_set('@version', ID3::V23)
-ID3_24 = ID3.new; ID3_24.instance_variable_set('@version', ID3::V24)
+ID3_22 = ID3Data.new; ID3_22.instance_variable_set('@version', ID3Data::V22)
+ID3_23 = ID3Data.new; ID3_23.instance_variable_set('@version', ID3Data::V23)
+ID3_24 = ID3Data.new; ID3_24.instance_variable_set('@version', ID3Data::V24)
 
 class ID3GetSetDel < MiniTest::Test
   def setup
-    @i = ID3.new
+    @i = ID3Data.new
     @i['BLAH'] = 1
     @i['QUUX'] = 2
     @i['FOOB:ar'] = 3
@@ -74,8 +74,8 @@ class ID3Loading < MiniTest::Test
   UNSYNC = File.expand_path('../data/id3v23_unsynch.id3', __FILE__)
 
   def test_empty_file
-    # assert_raises(Mutagen::ValueError) { ID3.new(filename:name) }
-    assert_raises(Mutagen::ID3::ID3NoHeaderError) { ID3.new(filename:EMPTY) }
+    # assert_raises(Mutagen::Mutagen::ValueError) { ID3.new(filename:name) }
+    assert_raises(Mutagen::ID3::ID3NoHeaderError) { ID3Data.new(filename:EMPTY) }
     #from_name = ID3(name)
     #obj = open(name, 'rb')
     #from_obj = ID3(fileobj=obj)
@@ -85,75 +85,75 @@ class ID3Loading < MiniTest::Test
 
   def test_nonexistant_file
     name = File.expand_path("../data/does/not/exist")
-    assert_raises(Errno::ENOENT) { ID3.new(name) }
+    assert_raises(Errno::ENOENT) { ID3Data.new(name) }
   end
 
   def test_header_empty
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set("@fileobj", File.open(EMPTY, 'r'))
     assert_raises(EOFError) { id3.send(:load_header)}
   end
 
 
   def test_header_silence
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set("@fileobj", File.open(SILENCE, 'r'))
     id3.send(:load_header)
-    assert_equal ID3::V23, id3.version
+    assert_equal ID3Data::V23, id3.version
     assert_equal 1314, id3.size
   end
 
   def test_header_2_4_invalid_flags
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set("@fileobj", StringIO.new("ID3\x04\x00\x1f\x00\x00\x00\x00"))
-    exception = assert_raises(ValueError) { id3.send(:load_header) }
+    exception = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
     assert_equal ' has invalid flags 0x1f', exception.message
   end
 
   def test_header_2_4_unsynch_flags
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set("@fileobj", StringIO.new("ID3\x04\x00\x10\x00\x00\x00\xFF"))
-    exception = assert_raises(ValueError) { id3.send(:load_header) }
+    exception = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
     assert_equal 'Header size not synchsafe', exception.message
   end
 
   def test_header_2_4_allow_footer
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x04\x00\x10\x00\x00\x00\x00"))
     id3.send(:load_header)
   end
 
   def test_header_2_3_invalid_flags
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x1f\x00\x00\x00\x00"))
-    ex = assert_raises(ValueError) { id3.send(:load_header) }
+    ex = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
     assert_equal ' has invalid flags 0x1f', ex.message
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x0f\x00\x00\x00\x00"))
-    ex = assert_raises(ValueError) { id3.send(:load_header) }
+    ex = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
     assert_equal ' has invalid flags 0xf', ex.message
   end
 
   def test_header_2_2
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x02\x00\x00\x00\x00\x00\x00"))
     id3.send :load_header
-    assert_equal ID3::V22, id3.version
+    assert_equal ID3Data::V22, id3.version
   end
 
   def test_header_2_1
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x01\x00\x00\x00\x00\x00\x00"))
-    assert_raises(ID3::ID3UnsupportedVersionError) { id3.send :load_header }
+    assert_raises(ID3Data::ID3UnsupportedVersionError) { id3.send :load_header }
   end
 
   def test_header_too_small
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x01\x00\x00\x00\x00\x00"))
     assert_raises(EOFError) { id3.send(:load_header) }
   end
 
   def test_header_2_4_extended
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00\x00\x00\x00\x05\x5a"))
     id3.send(:load_header)
     assert_equal 1, id3.instance_variable_get('@extsize')
@@ -161,13 +161,13 @@ class ID3Loading < MiniTest::Test
   end
 
   def test_header_2_4_extended_unsynch_size
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj',StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00\x00\x00\x00\xFF\x5a"))
-    assert_raises(ValueError) { id3.send(:load_header) }
+    assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
   end
 
   def test_header_2_4_extended_but_not
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj',StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00TIT1\x00\x00\x00\x01a"))
     id3.send :load_header
     assert_equal 0, id3.instance_variable_get("@extsize")
@@ -175,13 +175,13 @@ class ID3Loading < MiniTest::Test
   end
 
   def test_header_2_4_extended_but_not_but_not_tag
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj',StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00TIT9"))
     assert_raises(EOFError) { id3.send :load_header }
   end
 
   def test_header_2_3_extended
-    id3 = ID3.new
+    id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x40\x00\x00\x00\x00\x00\x00\x00\x06\x00\x00\x56\x78\x9a\xbc"))
     id3.send(:load_header)
     assert_equal 6, id3.instance_variable_get('@extsize')
@@ -189,25 +189,25 @@ class ID3Loading < MiniTest::Test
   end
 
   def test_unsynch
-    id3 = ID3.new
-    id3.instance_variable_set('@version', ID3::V24)
+    id3 = ID3Data.new
+    id3.instance_variable_set('@version', ID3Data::V24)
     id3.instance_variable_set('@flags', 0x80)
     badsync = "\x00\xff\x00ab\x00".b
     assert_equal "\xffab".b, id3.send(:load_framedata,
-                                      ID3::Frames.const_get(:TPE2),
+                                      ID3Data::Frames.const_get(:TPE2),
                                       0, badsync).to_a.first.b
 
     id3.instance_variable_set('@flags', 0x00)
     assert_equal "\xffab".b, id3.send(:load_framedata,
-                                      ID3::Frames.const_get(:TPE2),
+                                      ID3Data::Frames.const_get(:TPE2),
                                       0x02, badsync).to_a.first.b
     assert_equal ["\xff".b, "ab".b], id3.send(:load_framedata,
-                                              ID3::Frames.const_get(:TPE2),
+                                              ID3Data::Frames.const_get(:TPE2),
                                               0, badsync).to_a.map{|s| s.b}
   end
 
   def test_load_v23_unsynch
-    id3 = ID3.new UNSYNC
+    id3 = ID3Data.new UNSYNC
     tag = id3['TPE1'].instance_variable_get("@text").first.encode('UTF-8')
     assert_equal 'Nina Simone', tag
   end
@@ -226,7 +226,7 @@ class Issue21 < MiniTest::Test
   # Ensure the extended header is turned off, and the frames are
   # read.
   def setup
-      @id3 = ID3.new File.expand_path('../data/issue_21.id3', __FILE__)
+      @id3 = ID3Data.new File.expand_path('../data/issue_21.id3', __FILE__)
   end
 
   def test_no_ext
@@ -255,13 +255,13 @@ class ID3Tags < MiniTest::Test
       end
     end
     # GOOD GOD why is testing with clean modules so hard?
-    id3 = ID3.new @silence, known_frames: m
+    id3 = ID3Data.new @silence, known_frames: m
     assert_equal 0, id3.keys.size
     assert_equal 9, id3.instance_variable_get('@unknown_frames').size
   end
 
   def test_23
-    id3 = ID3.new @silence
+    id3 = ID3Data.new @silence
     assert_equal 8, id3.keys.size
     assert_equal 0, id3.instance_variable_get('@unknown_frames').size
     assert_equal 'Quod Libet Test Data', id3['TALB'].to_s
@@ -275,7 +275,7 @@ class ID3Tags < MiniTest::Test
     assert_equal '2004', id3['TDRC'].to_s
   end
 
-  class ID3hack < ID3
+  class ID3hack < ID3Data
     # Override 'correct' behavior with desired behavior
     def loaded_frame(tag)
       if include? tag.hash_key
@@ -302,31 +302,31 @@ class ID3Tags < MiniTest::Test
   end
 
   def test_bad_encoding
-    assert_raises(IndexError) { ID3::Frames::TPE1.from_data(ID3_24, 0, "\x09ab") }
-    assert_raises(ValueError) { ID3::Frames::TPE1.new(encoding:9, text:"ab") }
+    assert_raises(IndexError) { ID3Data::Frames::TPE1.from_data(ID3_24, 0, "\x09ab") }
+    assert_raises(Mutagen::ValueError) { ID3Data::Frames::TPE1.new(encoding:9, text:"ab") }
   end
 
   def test_bad_sync
-    assert_raises(Mutagen::ID3::ID3BadUnsynchData) { ID3::Frames::TPE1.from_data(ID3_24, 0x02, "\x00\xff\xfe") }
+    assert_raises(Mutagen::ID3::ID3BadUnsynchData) { ID3Data::Frames::TPE1.from_data(ID3_24, 0x02, "\x00\xff\xfe") }
   end
 
   def test_no_encrypt
-    assert_raises(Mutagen::ID3::ID3EncryptionUnsupportedError) { ID3::Frames::TPE1.from_data ID3_24, 0x04, "\x00" }
-    assert_raises(Mutagen::ID3::ID3EncryptionUnsupportedError) { ID3::Frames::TPE1.from_data ID3_23, 0x40, "\x00" }
+    assert_raises(Mutagen::ID3::ID3EncryptionUnsupportedError) { ID3Data::Frames::TPE1.from_data ID3_24, 0x04, "\x00" }
+    assert_raises(Mutagen::ID3::ID3EncryptionUnsupportedError) { ID3Data::Frames::TPE1.from_data ID3_23, 0x40, "\x00" }
   end
 
   def test_bad_compress
-    assert_raises(Mutagen::ID3::ID3BadCompressedData) { ID3::Frames::TPE1.from_data ID3_24, 0x08, "\x00\x00\x00\x00#"}
-    assert_raises(Mutagen::ID3::ID3BadCompressedData) { ID3::Frames::TPE1.from_data ID3_23, 0x80, "\x00\x00\x00\x00#"}
+    assert_raises(Mutagen::ID3::ID3BadCompressedData) { ID3Data::Frames::TPE1.from_data ID3_24, 0x08, "\x00\x00\x00\x00#"}
+    assert_raises(Mutagen::ID3::ID3BadCompressedData) { ID3Data::Frames::TPE1.from_data ID3_23, 0x80, "\x00\x00\x00\x00#"}
   end
 
   def test_junk_frame
-    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3::Frames::TPE1.from_data ID3_24, 0, ""}
+    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3Data::Frames::TPE1.from_data ID3_24, 0, ""}
   end
 
   def test_bad_sylt
-    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3::Frames::SYLT.from_data ID3_24, 0x0, "\x00eng\x01description\x00foobar"}
-    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3::Frames::SYLT.from_data ID3_24, 0x0, "\x00eng\x01description\x00foobar\x00\xFF\xFF\xFF".b}
+    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3Data::Frames::SYLT.from_data ID3_24, 0x0, "\x00eng\x01description\x00foobar"}
+    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3Data::Frames::SYLT.from_data ID3_24, 0x0, "\x00eng\x01description\x00foobar\x00\xFF\xFF\xFF".b}
   end
 
   def test_extra_data

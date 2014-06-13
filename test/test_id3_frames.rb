@@ -98,7 +98,7 @@ class FrameSanityChecker < MiniTest::Test
   def test_load_write
     artists = ["\xc2\xb5", "\xe6\x97\xa5\xe6\x9c\xac"].map {|s| s.force_encoding 'UTF-8' }
     artist = TPE1.new encoding:3, text:artists
-    id3 = ID3.new
+    id3 = ID3Data.new
     tag = nil
     id3.read_frames(id3.save_frame(artist), Mutagen::ID3::Frames) {|f| tag = f; break }
     assert_equal 'TPE1', tag.class.name.split('::').last
@@ -106,7 +106,7 @@ class FrameSanityChecker < MiniTest::Test
   end
 
   def test_22_to_24
-    id3 = ID3.new
+    id3 = ID3Data.new
     tt1 = TT1.new encoding:0, text:'whatcha staring at'
     id3.add(tt1)
     tit1 = id3['TIT1']
@@ -351,13 +351,13 @@ end
 
 class FrameIDValidate < MiniTest::Test
   def test_valid
-    assert ID3::is_valid_frame_id 'APIC'
-    assert ID3::is_valid_frame_id 'TPE2'
+    assert Mutagen::ID3::is_valid_frame_id 'APIC'
+    assert Mutagen::ID3::is_valid_frame_id 'TPE2'
   end
 
   def test_invalid
-    refute ID3::is_valid_frame_id 'MP3e'
-    refute ID3::is_valid_frame_id '+ABC'
+    refute Mutagen::ID3::is_valid_frame_id 'MP3e'
+    refute Mutagen::ID3::is_valid_frame_id '+ABC'
   end
 end
 

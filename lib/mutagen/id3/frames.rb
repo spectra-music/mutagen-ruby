@@ -5,7 +5,7 @@ require 'zlib'
 
 
 module Mutagen
-  class ID3 < Mutagen::Metadata
+  module ID3
     def self.is_valid_frame_id(frame_id)
       frame_id =~ /^[A-Z0-9]+$/
     end
@@ -157,7 +157,7 @@ module Mutagen
 
         # Construct this ID3 frame from raw string dta
         def self.from_data(id3, tflags, data)
-          if ID3::V24 <= id3.version
+          if ID3::ID3Data::ID3Data::V24 <= id3.version
             if tflags & (Frame::FLAG24_COMPRESS | Frame::FLAG24_DATALEN) != 0
               # The data length int is syncsafe in 2.4 (but not 2.3).
               # However, we don't actually need the data length int,
@@ -170,7 +170,7 @@ module Mutagen
               begin
                 data = Unsynch.decode data
               rescue Mutagen::ValueError => err
-                raise ID3BadUnsynchData, "#{err}:#{data}" if ID3::PEDANTIC
+                raise ID3BadUnsynchData, "#{err}:#{data}" if ID3::ID3Data::PEDANTIC
               end
             end
             raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG24_ENCRYPT != 0
@@ -184,11 +184,11 @@ module Mutagen
                 begin
                   data = Zlib::inflate(data)
                 rescue Zlib::Error => err
-                  raise ID3BadCompressedData, "#{err}: #{data}" if ID3::PEDANTIC
+                  raise ID3BadCompressedData, "#{err}: #{data}" if ID3::ID3Data::PEDANTIC
                 end
               end
             end
-          elsif ID3::V23 <= id3.version
+          elsif ID3::ID3Data::V23 <= id3.version
             if tflags & Frame::FLAG23_COMPRESS != 0
               usize, _ = data[0...4].unpack('L>')
               data     = data[4..-1]
