@@ -335,3 +335,93 @@ class ID3Tags < MiniTest::Test
   end
 end
 
+class TestID3v1Tags < MiniTest::Test
+  SILENCE = File.expand_path('../data/silence-44-s-v1.mp3', __FILE__)
+
+  def setup
+    @id3 = Mutagen::ID3::ID3Data.new SILENCE
+  end
+
+  def test_album
+    assert_equal 'Quod Libet Test Data', @id3['TALB'].to_s
+  end
+
+  def test_genre
+    assert_equal 'Darkwave', @id3['TCON'].genres.first
+  end
+
+  def test_title
+    assert_equal 'Silence', @id3['TIT2'].to_s
+  end
+
+  def test_artist
+    assert_equal 'piman', @id3['TPE1'].first
+  end
+
+  def test_track
+    assert_equal '2', @id3['TRCK'].to_s
+    assert_equal 2, +@id3['TRCK']
+    assert_equal 2, @id3['TRCK'].to_i
+  end
+
+  def test_year
+    assert_equal '2004', @id3['TDRC'].to_s
+  end
+
+  def test_v1_not_v11
+    @id3['TRCK'] = Frames::TRCK.new encoding:0, text:'32'
+    tag = Mutagen::ID3::make_ID3v1(@id3)
+    assert_equal 32, Mutagen::ID3::parse_ID3v1(tag)['TRCK'].to_i
+    @id3.delete 'TRCK'
+    tag = Mutagen::ID3::make_ID3v1(@id3)
+    tag = tag[0...125] + '  ' + tag[-1]
+    refute tag.include? 'TRCK'
+  end
+
+  def test_nulls
+    s = "TAG%<title>30s%<artist>30s%<album>30s%<year>4s%<cmt>29s\x03\x01"
+    s %= { artist:"abcd\00fg",
+           title:"hijklmn\x00p",
+           album:"qrst\x00v",
+           cmt:"wxyz",
+           year:"1234" }
+
+    tags = Mutagen::ID3::parse_ID3v1(s.encode('ASCII-8BIT'))
+    assert_equal 'abcd', tags['TPE1'].to_s
+    assert_equal 'hijklmn', tags['TIT2'].to_s
+    assert_equal 'qrst', tags['TALB'].to_s
+  end
+
+  def test_non_ascii
+    s = "TAG%<title>30s%<artist>30s%<album>30s%<year>4s%<cmt>29s\x03\x01"
+    s %= { artist:"abcd\xe9fg",
+           title:"hijklmn\xf3p",
+           album:"qrst\xfcv",
+           cmt:"wxyz",
+           year:"1234" }
+
+    tags = Mutagen::ID3::parse_ID3v1(s.force_encoding('ISO-8859-1'))
+    assert_equal "abcd\xe9fg".force_encoding('ISO-8859-1'), tags['TPE1'].to_s
+    assert_equal "hijklmn\xf3p".force_encoding('ISO-8859-1'), tags['TIT2'].to_s
+    assert_equal "qrst\xfcv".force_encoding('ISO-8859-1'), tags['TALB'].to_s
+    assert_equal 'wxyz', tags['COMM'].to_s
+    assert_equal '3', tags['TRCK'].to_s
+    assert_equal '1234', tags['TDRC'].to_s
+  end
+
+  def test_roundtrip
+    id3 = Mutagen::ID3
+    frames = {}
+    %w(TIT2 TALB TPE1 TDRC).each { |key| frames[key] = @id3[key] }
+    assert_equal frames.sort, id3::parse_ID3v1(id3::make_ID3v1(frames)).sort
+  end
+
+  def test_make_from_empty
+    id3 = Mutagen::ID3
+    empty = "TAG" + "\x00" * 124 + "\xff"
+    assert_equal empty, id3.make_ID3v1({})
+    assert_equal empty, id3.make_ID3v1({ 'TCON' => Frames::TCON.new })
+    assert_equal empty, id3.make_ID3v1({ 'COMM' => Frames::COMM.new(encoding:0,
+                                                                    text:'')})
+  end
+end

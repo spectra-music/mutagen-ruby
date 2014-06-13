@@ -39,7 +39,7 @@ module Mutagen
     def self.parse_ID3v1(string)
       idx = string.index('TAG')
       return if idx.nil?
-      string = string.fetch(idx)
+      string = string[idx..-1]
       return if 128 < string.size or string.size < 124
 
       # Issue #69 - Previous versions of Mutagen, when encountering
@@ -55,10 +55,11 @@ module Mutagen
       return if tag != 'TAG'
 
       def fix(string)
-        string.split("\x00").first.strip.force_encoding('ISO-8859-1')
+        s = string.split("\x00".b).first
+        Mutagen::strip_arbitrary(s.strip, "\x00".b).force_encoding('ISO-8859-1') unless s.nil?
       end
 
-      [title, artist, album, year, comment].map! { |e| fix e }
+      title, artist, album, year, comment = [title, artist, album, year, comment].map { |e| fix e }
 
       frames = {}
       unless title.nil? or title.empty?
@@ -78,9 +79,8 @@ module Mutagen
       end
       # Don't read a track number if it looks like the comment was
       # padded with spaces instead of nulls (thanks, WinAmp).
-      if not track.nil? and not track.empty? and
-          (track != 32 or string[-3] == "\x00")
-        frames['TRCK'] = TRCK encoding:0, text:track.to_s
+      if not track.nil? and track != 0 and (track != 32 or string[-3] == "\x00")
+        frames['TRCK'] = TRCK.new encoding:0, text:track.to_s
       end
       if genre != 255
         frames['TCON'] = TCON.new encoding:0, text:genre.to_s
@@ -102,12 +102,16 @@ module Mutagen
         v1[name] = text + ("\x00" * (30 - text.bytesize))
       end
 
-      cmnt = id3.has_key?('COMM') ? id3['COMM'].text.first.encode('ISO-8859-1', undef: :replace)[0...28] : ""
-      v1["comment"] = cmnt + ("\x00" * (29 - cmnt.size))
+      cmnt = if id3.has_key?('COMM') and not id3['COMM'].text.empty?
+               id3['COMM'].text.first.encode('ISO-8859-1', undef: :replace)[0...28]
+             else
+               ""
+             end
+      v1["comment"] = cmnt + ("\x00" * (29 - cmnt.bytesize))
 
       if id3.has_key?('TRCK')
         v1['track'] =  begin
-          (+id3.fetch('TRCK')).to_s
+          (+id3.fetch('TRCK')).chr
         rescue KeyError
           "\x00"
         end
@@ -116,8 +120,31 @@ module Mutagen
       end
 
       if id3.has_key?('TCON')
-
+        begin
+          genre = id3.fetch('TCON').genres.first
+          flag = true
+        rescue KeyError
+          flag = false
+        end
+        if flag and TCON::GENRES.include? genre
+          v1['genre'] = TCON::GENRES.index(genre).chr
+        end
       end
+
+      unless v1.has_key? 'genre'
+        v1['genre'] = "\xff"
+      end
+
+      year = if id3.has_key? 'TDRC'
+        id3['TDRC'].to_s.encode('UTF-8')
+      elsif id3.has_key? 'TYER'
+        id3['TYER'].encode('UTF-8')
+      else ''
+      end
+
+      v1['year'] = (year + "\x00\x00\x00\x00")[0...4]
+
+      'TAG' << v1["title"] << v1['artist'] << v1['album'] << v1['year'] << v1['comment'] << v1['track'] << v1['genre']
     end
   end
 end

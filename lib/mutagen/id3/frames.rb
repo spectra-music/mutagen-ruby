@@ -100,11 +100,14 @@ module Mutagen
         # The string returned is a valid ruby expression
         # to construct a copy of this frame
         def repr
-          kw = []
-          self.class::FRAMESPEC.each do |attr|
-            kw << "#{attr.name} => #{instance_variable_get("@#{attr.name}")}"
+          kw = self.class::FRAMESPEC.map do |attr|
+            "#{attr.name} => #{instance_variable_get("@#{attr.name}")}"
           end
           "#{self.class.to_s}.new(#{kw.join(', ')})"
+        end
+
+        def ==(other)
+          repr == other.repr
         end
 
         def read_data(data)
@@ -315,7 +318,7 @@ module Mutagen
           if other.is_a? String
             self.to_s == other
           else
-            @text == other
+            @text == other.text
           end
         end
 

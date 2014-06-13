@@ -72,6 +72,15 @@ module HashMixin
     keys.to_a.each { |k| delete k }
   end
 
+  def fetch(key, default=nil)
+    if default.nil?
+      raise KeyError, "No such key in Hash" unless has_key? key
+    else
+      return default
+    end
+    self[key]
+  end
+
   def delete_item(key)
     if keys.empty?
       raise KeyError, 'dictionary is empty'
