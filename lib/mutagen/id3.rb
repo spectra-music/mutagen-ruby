@@ -49,6 +49,7 @@ module Mutagen
     attr_reader :version, :size
 
     def initialize(*args, ** kwargs)
+      @version = V24
       @filename, @crc, @unknown_version = nil
       @size, @flags, @readbytes         = 0, 0, 0
 
@@ -118,8 +119,8 @@ module Mutagen
           end
         end
         data = fullread(@size - 10)
-        read_frames(data, frames: frames).each do |frame|
-          if frame.is_a? Frame
+        read_frames(data, frames) do |frame|
+          if frame.is_a? ParentFrames::Frame
             add frame
           else
             @unknown_frames << frame
@@ -129,7 +130,9 @@ module Mutagen
         @fileobj.close
         @fileobj  = nil
         @filesize = nil
-        #(v2_version == 3) ? update_to_v23 : update_to_v24 if translate
+        if translate
+          (v2_version == 3) ? update_to_v23 : update_to_v24
+        end
       end
     end
 
@@ -202,8 +205,10 @@ module Mutagen
     # as does making loaded _frame call add
 
     # Add a frame to the tag
-    def add(frame)
-      loaded_frame(frame)
+    def add(tag)
+      # turn 2.2 into 2.3/2.4 tags
+      tag                = tag.class.superclass.new(tag) if tag.class.to_s.size == 3
+      self[tag.hash_key] = tag
     end
 
     def load_header
@@ -224,7 +229,7 @@ module Mutagen
         end
       end
 
-      if f_extended > 0
+      if f_extended != 0
         extsize = fullread 4
         if not extsize.nil? and Frames.constants.include? extsize.to_sym
           # Some tagger sets the extended header flag but
@@ -264,7 +269,7 @@ module Mutagen
 
     def determine_bpi(data, frames, empty: "\x00" * 10)
       if @version < V24
-        Integer
+        return Integer
       end
       # have to special case whether to use bitpaddedints here
       # spec says to use them, but iTunes has it wrong
@@ -281,8 +286,8 @@ module Mutagen
           break
         end
         name, size, flags = part.unpack('a4L>S>')
-        size              = BitPaddedInteger(size)
-        o                 += 10 + size
+        size              = BitPaddedInteger.new size
+        o                 += 10 + size.to_i
         if frames.constants.include? name.to_sym
           asbpi += 1
         end
@@ -321,7 +326,7 @@ module Mutagen
     end
 
     def read_frames(data, frames)
-      if @version < V24 and @f_unsynch
+      if @version < V24 and f_unsynch != 0
         begin
           data = Unsynch.decode(data)
         rescue Mutagen::ValueError
@@ -331,19 +336,19 @@ module Mutagen
 
       if V23 <= @version
         bpi = determine_bpi(data, frames)
-        while data > 0
-          header = [0...10]
+        until data.empty?
+          header = data[0...10]
           if (vals = header.unpack('a4L>S>')).include? nil
             return # not enough header
           else
             name, size, flags = vals
           end
-          if name.strip("\x00").empty?
+          if Mutagen.strip_arbitrary(name, "\x00").empty?
             return
           end
-          size      = bpi(size)
-          framedata = data[10...10+size]
-          data      = data[10+size..-1]
+          size      = if Integer == bpi then size.to_i else bpi.new(size) end
+          framedata = data[10...10+size.to_i]
+          data      = data[10+size.to_i..-1]
           if size == 0
             next # drop empty frames
           end
@@ -448,6 +453,227 @@ module Mutagen
     end
 
     def prepare_id3_header(original_header, framesize, v2_version)
+      if (val = original_header.unpack('a3C3a4')).include? nil
+        id3, insize = '', 0
+      else
+        id3, vmaj, vrev, flags, insize = val
+      end
+      insize = BitPaddedInteger.new insize
+      if id3 != 'ID3'.b
+        insize = -10
+      end
+
+      if insize >= framesize
+        outsize = insize
+      else
+        outsize = (framesize + 1023) & ~0x3FF
+      end
+
+      framesize = BitPaddedInteger.to_str(outsize, width:4)
+      header = ['ID3'.b, v2_version, 0, 0, framesize].pack('a3C3a4')
+      return header, outsize, insize
+    end
+
+    # save #########################
+
+    # Remove tags from a file.
+    #
+    # If no filename is given, the one most recently loaded is used.
+    #
+    # Keyword arguments:
+    #
+    # * delete_v1 -- delete any ID3v1 tag
+    # * delete_v2 -- delete any ID3v2 tag
+    def delete_tags(filename:nil, delete_v1:true, delete_v2:true)
+      if filename.nil? or filename.empty?
+        filename = @filename
+      end
+      ID3::delete(filename, delete_v1, delete_v2)
+    end
+
+    def save_frame(frame, name:nil, version:V24, v23_sep:nil)
+      flags = 0
+      if PEDANTIC and frame.is_a? TextFrame
+        return '' if frame.to_s.empty?
+      end
+
+      if version == V23
+        framev23 = frame.get_v23_frame(sep:v23_sep)
+        framedata = framev23.write_data
+      else
+        framedata = frame.write_data
+      end
+
+      # usize = framedata.size
+      # if usize > 2048
+      #   # Disabled as this causes iTunes and other programs
+      #   # fail to find these frames, which usually includes
+      #   # e.g. APIC.
+      #   #framedata = BitPaddedInt.to_str(usize) + framedata.encode('zlib')
+      #   #flags |= Frame.FLAG24_COMPRESS | Frame.FLAG24_DATALEN
+      # end
+
+      if version == V24
+        bits = 7
+      elsif version == V23
+        bits = 8
+      else
+        raise ArgumentError, "Version is not valid"
+      end
+
+      datasize = BitPaddedInteger.to_str(framedata.size, width:4, bits:bits)
+      frame_name = frame.class.name.split("::").last.encode('ASCII-8BIT')
+      header = [(name or frame_name), datasize, flags].pack('a4a4S>')
+      header + framedata
+    end
+
+    # Updates done by both v23 and v24 update
+    def update_common
+      if self.include? 'TCON'
+        # Get rid of "(xx)Foobr" format.
+        self['TCON'].genres = self['TCON'].genres
+      end
+
+      if @version < V23
+        # ID3v2.2 PIC frames are slightly different
+        pics = get_all "APIC"
+        mimes= {'PNG'=> 'image/png', 'JPG'=> 'image/jpeg'}
+        delete_all 'APIC'
+        pics.each do |pic|
+          newpic = APIC.new(encoding:pic.encoding, mime:(mimes[pic.mime] or pic.mime), type: pic.type, desc: pic.desc, data: pic.data)
+          add newpic
+        end
+        delete_all 'LINK'
+      end
+    end
+
+    # Convert older tags into an ID3v2.4 tag.
+    #
+    # This updates old ID3v2 frames to ID3v2.4 ones (e.g. TYER to
+    # TDRC). If you intend to save tags, you must call this function
+    # at some point; it is called by default when loading the tag.
+    def update_to_v24
+      update_common
+
+      if @unknown_version == V23
+        # convert unknown 2.3 frames (flags/size) to 2.4
+        converted = []
+        @unknown_frames.each do |frame|
+          if (val = frame[0...10]).include? nil
+            next
+          else
+            name, size, flags = val
+            frame             = ParentFrames::BinaryFrame.from_data(self, flags, frame[10..-1])
+          end
+          converted << save_frame(frame, name:name)
+        end
+      end
+
+      # TDAT, TYER, and TIME have been turned into TDRC
+      begin
+        unless Mutagen::strip_arbitrary((self['TYER'] or '').to_s, "\x00").empty?
+          date = @dict.delete('TYER').to_s
+          unless Mutagen::strip_arbitrary((self['TDAT'] or '').to_s, "\x00").empty?
+            dat = @dict.delete('TDAT').to_s
+            date = "#{date}-#{dat[0...2]}-#{dat[2..-1]}"
+            unless Mutagen::strip_arbitrary((self['TIME'] or '').to_s, "\x00").empty?
+              time = @dict.delete('TIME').to_s
+              date += "T#{time[0...2]}:#{time[2..-1]}:00"
+            end
+          end
+          unless include? 'TDRC'
+            add(Frames::TDRC.new(encoding:0, text:date))
+          end
+        end
+      rescue EncodingError
+        # Ignore
+      end
+
+      # TORY can be the first part of TDOR
+      if include? 'TORY'
+        f = @dict.delete['TORY']
+        unless include? 'TDOR'
+          begin
+            add Frames::TDOR.new(encoding:0, text:f.to_s)
+          rescue EncodingError
+            # Ignore
+          end
+        end
+      end
+
+      # IPLC is now TIPL
+      if include? 'IPLS'
+        f = @dict.delete 'IPLS'
+        unless include? "TIPL"
+          add Frames::TIPl.new(encoding:f.encoding, people:f.people)
+        end
+      end
+
+      # These can't be trivially translated to any ID3v2.4 tags, or
+      # should have been removed already
+      %w(RVAD EQUA TRDA TSIZ TDAT TIME CRM).each do |key|
+        @dict.delete key if include? key
+      end
+    end
+
+    # Convert older (and newer) tags into an ID3v2.3 tag.
+    #
+    # This updates incompatible ID3v2 frames to ID3v2.3 ones. If you
+    # intend to save tags as ID3v2.3, you must call this function
+    # at some point.
+    #
+    # If you want to to go off spec and include some v2.4 frames
+    # in v2.3, remove them before calling this and add them back afterwards.
+    def update_to_v23
+      update_common
+
+      # we could downgrade unknown v2.4 frames here, but given that
+      # the main reason to save v2.3 is compatibility and this
+      # might increase the chance of some parser breaking.. better not
+
+      # TMCL, TIPL -> TIPL
+      if include?('TIPL') or include?('TMCL')
+        people = []
+        people.push(*@dict.delete('TIPL').people) if include? 'TIPL'
+        people.push(*@dict.delete('TMCL').people) if include? 'TMCL'
+        unless include? 'IPLS'
+          add IPLS.new(encoding: f.encoding, people:people)
+        end
+      end
+
+      # TDOR -> TORY
+      if include? 'TDOR'
+        f = @dict.delete 'TDOR'
+        unless f.text.empty?
+          d = f.text.first
+          unless d.year.nil? or d.year.empty? or include? "TORY"
+            add Frames::TORY.new(encoding:f.encoding, text: ("%04d" % [d.year]))
+          end
+        end
+      end
+
+      # TDRC -> TYER, TDAT, TIME
+      if include? 'TDRC'
+        f = @dict.delete 'TDRC'
+        unless f.text.nil? or f.text.empty?
+          d = f.text.first
+          unless d.year.nil? or d.year.empty? or include? 'TYER'
+            add Frames::TYER.new(encoding:f.encoding, text: ("%04d" % [d.year]))
+          end
+          unless d.day.nil? or d.day.empty? or
+              d.month.nil? or d.month.empty? or include? 'TDAT'
+            add Frames::TDAT.new(encoding:f.encoding, text: ("%02d%02d" % [d.day, d.month]))
+          end
+          unless d.hour.nil? or d.minute.empty? or
+              d.month.nil? or d.month.empty? or include? 'TIME'
+            add Frames::TIME.new(encoding:f.encoding, text: ("%02d%02d" % [d.hour, d.minute]))
+          end
+        end
+      end
+
+      # New frames added in v2.4
+      v24_frames = %w(ASPI EQU2 RVA2 SEEK SIGN TDEN TDOR TDRC TDRL TDTG TIPL TMCL TMOO TPRO TSOA TSOP TSOT TSST)
+      v24_frames.each { |key| @dict.delete key if include? key }
     end
   end
 end

@@ -20,7 +20,7 @@ module Mutagen
       if filename.nil?
         raise ArgumentError, 'FileType constructor requires a filename'
       end
-      load(filename, *args, **kwargs)
+      self.load(filename, *args, **kwargs)
     end
 
     # Look up a metadata key.

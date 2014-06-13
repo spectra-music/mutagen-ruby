@@ -2,9 +2,9 @@ require_relative 'test_helper'
 include Mutagen
 
 
-_22 = ID3.new; _22.instance_variable_set('@version', ID3::V22)
-_23 = ID3.new; _23.instance_variable_set('@version', ID3::V23)
-_24 = ID3.new; _24.instance_variable_set('@version', ID3::V24)
+ID3_22 = ID3.new; ID3_22.instance_variable_set('@version', ID3::V22)
+ID3_23 = ID3.new; ID3_23.instance_variable_set('@version', ID3::V23)
+ID3_24 = ID3.new; ID3_24.instance_variable_set('@version', ID3::V24)
 
 class ID3GetSetDel < MiniTest::Test
   def setup
@@ -72,6 +72,7 @@ end
 class ID3Loading < MiniTest::Test
   EMPTY = File.expand_path('../data/emptyfile.mp3', __FILE__)
   SILENCE = File.expand_path('../data/silence-44-s.mp3', __FILE__)
+  UNSYNC = File.expand_path('../data/id3v23_unsynch.id3', __FILE__)
 
   def test_empty_file
     # assert_raises(Mutagen::ValueError) { ID3.new(filename:name) }
@@ -193,12 +194,145 @@ class ID3Loading < MiniTest::Test
     id3.instance_variable_set('@version', ID3::V24)
     id3.instance_variable_set('@flags', 0x80)
     badsync = "\x00\xff\x00ab\x00".b
-    id3.send(:load_framedata,
-             ID3::Frames.const_get(:TPE2),
-             0, badsync).to_a
     assert_equal "\xffab".b, id3.send(:load_framedata,
                                       ID3::Frames.const_get(:TPE2),
-                                      0, badsync).to_a.first
+                                      0, badsync).to_a.first.b
+
+    id3.instance_variable_set('@flags', 0x00)
+    assert_equal "\xffab".b, id3.send(:load_framedata,
+                                      ID3::Frames.const_get(:TPE2),
+                                      0x02, badsync).to_a.first.b
+    assert_equal ["\xff".b, "ab".b], id3.send(:load_framedata,
+                                              ID3::Frames.const_get(:TPE2),
+                                              0, badsync).to_a.map{|s| s.b}
+  end
+
+  def test_load_v23_unsynch
+    id3 = ID3.new UNSYNC
+    tag = id3['TPE1'].instance_variable_get("@text").first.encode('UTF-8')
+    assert_equal 'Nina Simone', tag
+  end
+
+  # def test_insane_ID3_fullread
+  #   id3 = ID3.new
+  #   id3.instance_variable_set('@filesize', 0)
+  #   assert_raises(NoMethodError) { id3.send(:fullread, -3) }
+  #   assert_raises(NoMethodError) { id3.send(:fullread, 3) }
+  # end
+end
+
+
+class Issue21 < MiniTest::Test
+  # Files with bad extended header flags failed to read tags.
+  # Ensure the extended header is turned off, and the frames are
+  # read.
+  def setup
+      @id3 = ID3.new File.expand_path('../data/issue_21.id3', __FILE__)
+  end
+
+  def test_no_ext
+    assert_equal 0, @id3.f_extended
+  end
+
+  def test_has_tags
+    assert_includes @id3, "TIT2"
+    assert_includes @id3, "TALB"
+  end
+
+  def test_tit2_value
+    assert_equal @id3["TIT2"].text, ["Punk To Funk"]
+  end
+end
+
+class ID3Tags < MiniTest::Test
+  def setup
+    @silence = File.expand_path('../data/silence-44-s.mp3', __FILE__)
+  end
+
+  def test_nil
+    m = Module.new do
+      def self.const_get(*args)
+        raise NameError
+      end
+    end
+    # GOOD GOD why is testing with clean modules so hard?
+    id3 = ID3.new @silence, known_frames: m
+    assert_equal 0, id3.keys.size
+    assert_equal 9, id3.instance_variable_get('@unknown_frames').size
+  end
+
+  def test_23
+    id3 = ID3.new @silence
+    assert_equal 8, id3.keys.size
+    assert_equal 0, id3.instance_variable_get('@unknown_frames').size
+    assert_equal 'Quod Libet Test Data', id3['TALB'].to_s
+    assert_equal 'Silence', id3['TCON'].to_s
+    assert_equal 'Silence', id3['TIT1'].to_s
+    assert_equal 'Silence', id3['TIT2'].to_s
+    assert_equal 3000, +id3['TLEN']
+    refute_equal ['piman','jzig'], id3['TPE1'].to_a
+    assert_equal '02/10', id3['TRCK'].to_s
+    assert_equal 2, +id3['TRCK']
+    assert_equal '2004', id3['TDRC'].to_s
+  end
+
+  class ID3hack < ID3
+    # Override 'correct' behavior with desired behavior
+    def loaded_frame(tag)
+      if include? tag.hash_key
+        self[tag.hash_key].push(*tag.to_a)
+      else
+        self[tag.hash_key] = tag
+      end
+    end
+  end
+
+  def test_23_multiframe_hack
+    id3 = ID3hack.new @silence
+    assert_equal 8, id3.keys.size
+    assert_equal 0, id3.instance_variable_get('@unknown_frames').size
+    assert_equal 'Quod Libet Test Data', id3['TALB'].to_s
+    assert_equal 'Silence', id3['TCON'].to_s
+    assert_equal 'Silence', id3['TIT1'].to_s
+    assert_equal 'Silence', id3['TIT2'].to_s
+    assert_equal 3000, +id3['TLEN']
+    refute_equal ['piman','jzig'], id3['TPE1'].to_a
+    assert_equal '02/10', id3['TRCK'].to_s
+    assert_equal 2, +id3['TRCK']
+    assert_equal '2004', id3['TDRC'].to_s
+  end
+
+  def test_bad_encoding
+    assert_raises(IndexError) { ID3::Frames::TPE1.from_data(ID3_24, 0, "\x09ab") }
+    assert_raises(ValueError) { ID3::Frames::TPE1.new(encoding:9, text:"ab") }
+  end
+
+  def test_bad_sync
+    assert_raises(Mutagen::ID3::ID3BadUnsynchData) { ID3::Frames::TPE1.from_data(ID3_24, 0x02, "\x00\xff\xfe") }
+  end
+
+  def test_no_encrypt
+    assert_raises(Mutagen::ID3::ID3EncryptionUnsupportedError) { ID3::Frames::TPE1.from_data ID3_24, 0x04, "\x00" }
+    assert_raises(Mutagen::ID3::ID3EncryptionUnsupportedError) { ID3::Frames::TPE1.from_data ID3_23, 0x40, "\x00" }
+  end
+
+  def test_bad_compress
+    assert_raises(Mutagen::ID3::ID3BadCompressedData) { ID3::Frames::TPE1.from_data ID3_24, 0x08, "\x00\x00\x00\x00#"}
+    assert_raises(Mutagen::ID3::ID3BadCompressedData) { ID3::Frames::TPE1.from_data ID3_23, 0x80, "\x00\x00\x00\x00#"}
+  end
+
+  def test_junk_frame
+    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3::Frames::TPE1.from_data ID3_24, 0, ""}
+  end
+
+  def test_bad_sylt
+    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3::Frames::SYLT.from_data ID3_24, 0x0, "\x00eng\x01description\x00foobar"}
+    assert_raises(Mutagen::ID3::ID3JunkFrameError) { ID3::Frames::SYLT.from_data ID3_24, 0x0, "\x00eng\x01description\x00foobar\x00\xFF\xFF\xFF".b}
+  end
+
+  def test_extra_data
+    #assert_warning(ID3Warning) { ID3::Frames::RVRB.send(:read_data, "L1R1BBFFFFPP#xyz")}
+    #assert_warning(ID3Warning) { ID3::Frames::RBUF.send(:read_data, "\x00\x01\x00\x01\x00\x00\x00\x00#xyz")}
   end
 end
 

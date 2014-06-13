@@ -9,7 +9,7 @@ module Mutagen
     include Specs
 
     def is_valid_frame_id(frame_id)
-      frame_id =~ /[:alnum:]/ and frame_id =~ /[:upper:]/
+      frame_id =~ /[[:alnum:]]/ and frame_id =~ /[[:upper:]]/
     end
 
     module ParentFrames
@@ -40,7 +40,7 @@ module Mutagen
         FRAMESPEC = []
 
         #TODO: Refactor first condition into a .clone method
-        def initialize(*args, ** kwargs)
+        def initialize(*args, **kwargs)
           # If we've only got one argument, and the other argument is the same class,
           # we're going to clone the other object's fields into ours.
           if args.size == 1 and kwargs.size == 0 and args[0].is_a? self.class
@@ -66,7 +66,7 @@ module Mutagen
             self.class::FRAMESPEC[args.size..-1].each do |checker|
               begin
                 #TODO: does checker.name.to_sym improve performance?
-                validated = checker.validate(self, kwargs[checker.name])
+                validated = checker.validate(self, kwargs[checker.name.to_sym])
               rescue Mutagen::ValueError => e
                 raise e.exception("#{checker.name}: #{e.message}")
               end
@@ -96,7 +96,7 @@ module Mutagen
 
         # ID3v2 three or four character frame ID
         def frame_id
-          self.class.to_s
+          self.class.name.split("::").last
         end
 
         # represention of a frame
@@ -166,37 +166,37 @@ module Mutagen
               datalen_bytes = data[0...4]
               data          = data[4..-1]
             end
-            if tflags & Frame::FLAG24_UNSYNCH != 0 or id3.f_unsynch
+            if tflags & Frame::FLAG24_UNSYNCH != 0 or id3.f_unsynch != 0
               begin
                 data = Unsynch.decode data
               rescue Mutagen::ValueError => err
-                raise ID3BadUnsynchData, "#{err}:#{data}" if id3.PEDANTIC
+                raise ID3BadUnsynchData, "#{err}:#{data}" if ID3::PEDANTIC
               end
             end
             raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG24_ENCRYPT != 0
             if tflags & Frame::FLAG24_COMPRESS != 0
               begin
-                data = Zlib::Deflate(data)
+                data = Zlib::inflate(data)
               rescue Zlib::Error
                 # the initial mutagen that went out with QL 0.12 did not
                 # write the 4 bytes of uncompressed size. Compensate.
                 data = datalen_bytes + data
                 begin
-                  data = Zlib::deflate(data)
+                  data = Zlib::inflate(data)
                 rescue Zlib::Error => err
-                  raise ID3BadCompressedData, "#{err}: #{data}" if id3.PEDANTIC
+                  raise ID3BadCompressedData, "#{err}: #{data}" if ID3::PEDANTIC
                 end
               end
             end
           elsif ID3::V23 <= id3.version
             if tflags & Frame::FLAG23_COMPRESS != 0
-              usize, _ = unpack('L>', data[0...4])
+              usize, _ = data[0...4].unpack('L>')
               data     = data[4..-1]
             end
             raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG23_ENCRYPT != 0
             if tflags & Frame::FLAG23_COMPRESS != 0
               begin
-                data = Zlib::deflate(data)
+                data = Zlib::inflate(data)
               rescue Zlib::Error => err
                 raise ID3BadCompressedData, "#{err}: #{data}"
               end
@@ -509,20 +509,20 @@ module Mutagen
           genre_re = /((?:\(([0-9]+|RX|CR)\))*)(.+)?/
           text.each do |value|
             # 255 possible entries in id3v1
-            if value =~ /[[:digit:]]/ and value.to_i < 256
+            if value =~ /^[[:digit:]]+$/ and value.to_i < 256
               genre = GENRES[value.to_i]
               genres << (genre.nil? ? 'Unknown' : genre)
             elsif value == 'CR'
               genres << 'Cover'
             elsif value == 'RX'
               genres << 'Remix'
-            elsif not value.nil?
-              newgenres                 = []
-              genreid, dummy, genrename = value.match(genre_re).to_a[1...-1]
+            elsif not value.nil? and not value.empty?
+              newgenres             = []
+              genreid, _, genrename = value.match(genre_re).to_a[1..-1]
 
-              unless genreid.empty?
-                genreid[1..-1].split(")(").each do |gid|
-                  if gid =~ /[[:digit]]/ and gid.to_i < GENRES.size
+              unless genreid.nil? or genreid.empty?
+                genreid[1...-1].split(')(').each do |gid|
+                  if gid =~ /[[:digit:]]+/ and gid.to_i < GENRES.size
                     gid = GENRES[gid.to_i].to_s
                     newgenres << gid
                   elsif gid == 'CR'
@@ -535,7 +535,7 @@ module Mutagen
                 end
               end
 
-              unless genrename.empty?
+              unless genrename.nil? or genrename.empty?
                 # 'Unescaping' the first parentheses
                 if genrename.start_with? "(("
                   genrename = genrename[1..-1]
@@ -547,7 +547,7 @@ module Mutagen
               genres.push(*newgenres)
             end
           end
-          genres
+         genres
         end
 
 

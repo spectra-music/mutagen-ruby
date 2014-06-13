@@ -84,7 +84,7 @@ module Mutagen
 
         def validate(frame, value)
           return nil if value.nil?
-          return value if 0 <= value and value <= 3
+          return value if 0 <= value.to_i and value.to_i <= 3
           raise Mutagen::ValueError, "Invalid Encoding: #{value}"
         end
 
@@ -118,7 +118,7 @@ module Mutagen
           end
 
           unless value.is_a? String
-            value.to_s.encode 'ascii'
+            value = value.to_s.encode 'ASCII-8BIT'
           end
 
           if value.size == @len
@@ -135,16 +135,16 @@ module Mutagen
 
         def write(frame, value)
           if value.nil?
-            ''
+            ''.b
           elsif value.is_a? String
-            value
+            value.b
           else
-            value.to_s.encode('ascii')
+            value.to_s.encode('ASCII-8BIT')
           end
         end
 
         def validate(frame, value)
-          value.is_a?(Array) ? value : value.encode('ascii')
+          value.is_a?(String) ? value : value.to_s.encode('ascii')
         end
       end
 
@@ -164,29 +164,26 @@ module Mutagen
         end
 
         def read(frame, data)
-          enc, term = ENCODINGS[frame.encoding]
+          enc, term = ENCODINGS.fetch(frame.encoding)
           ret       = ''
-          if term.size == 1
+          if term.bytesize == 1
             if data.include? term
               data, ret = data.split(term, 2)
             end
           else
             offset = -1
-            begin
-              while true
-                offset = data.index(term, offset+1)
-                next if offset & 1
-                data, ret = data[0...offset], data[offset+2..-1]
-                break
-              end
-            rescue Mutagen::ValueError
-              # ignored
+            while true
+              offset = data.index(term, offset+1)
+              break if offset.nil?
+              next if offset & 1 != 0
+              data, ret = data[0...offset], data[offset+2..-1]
+              break
             end
           end
-          if data.size < term.size
+          if data.bytesize < term.bytesize
             return '', ret
           else
-            return data, ret
+            return data.force_encoding(enc), ret
           end
         end
 

@@ -100,9 +100,77 @@ class TestGenres < MiniTest::Test
     assert_equal [], _g('')
   end
 
-  # def test_num
-  #   GENRES.each_with_index do |genre, i|
-  #     assert_equal [genre], _g("(%02d)" % i)
-  #   end
-  # end
+  def test_num
+    GENRES.each_with_index do |genre, i|
+      assert_equal [genre], _g("%02d" % i)
+    end
+  end
+
+  def test_parened_num
+    GENRES.each_with_index do |genre, i|
+      assert_equal [genre], _g("(%02d)" % i)
+    end
+  end
+
+  def test_unknwon
+    assert_equal ["Unknown"], _g("(255)")
+    assert_equal ["Unknown"], _g("199")
+    refute_equal ["Unknown"], _g("256")
+  end
+
+  def test_parened_multi
+    assert_equal ["Blues", "Country"], _g("(00)(02)")
+  end
+
+  def test_cover_remix
+    assert_equal ["Cover"], _g("CR")
+    assert_equal ["Cover"], _g("(CR)")
+    assert_equal ["Remix"], _g("RX")
+    assert_equal ["Remix"], _g("(RX)")
+  end
+
+  def test_parened_text
+    assert_equal ["Blues", "Country", "Real Folk Blues"], _g("(00)(02)Real Folk Blues")
+  end
+
+  def test_escape
+    assert_equal ["Blues", "(A genre)"], _g("(0)((A genre)")
+    assert_equal ["New Age", "(20)"], _g("(10)((20)")
+  end
+
+  def test_null_sep
+    assert_equal ["Blues", "A genre"], _g("0\x00A genre")
+  end
+
+  def test_null_sep_empty
+    assert_equal ["Blues", "A genre"], _g("\x000\x00A genre")
+  end
+
+  def test_crazy
+    assert_equal ['Alternative', 'Cover', 'Fusion', 'Another', 'Techno-Industrial', 'Hooray'], _g("(20)(CR)\x0030\x00\x00Another\x00(51)Hooray")
+  end
+
+  def test_repeat
+    assert_equal ["Alternative"], _g("(20)Alternative")
+    assert_equal ["Alternative", "Alternative"], _g("(20)\x00Alternative")
+  end
+
+  def test_set_genre
+    gen = TCON.new encoding:0, text:''
+    assert_equal [], gen.genres
+    gen.genres = ["a genre", "another"]
+    assert_equal ["a genre", "another"], gen.genres
+  end
+
+  def test_set_string
+    gen = TCON.new encoding:0, text:''
+    gen.genres = "foo"
+    assert_equal ["foo"], gen.genres
+  end
+
+  def test_no_double_decode
+    gen = TCON.new encoding:1, text:"(255)genre"
+    gen.genres = gen.genres
+    assert_equal ["Unknown", "genre"], gen.genres
+  end
 end
