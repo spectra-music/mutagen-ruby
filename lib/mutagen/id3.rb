@@ -672,5 +672,103 @@ module Mutagen
       v24_frames = %w(ASPI EQU2 RVA2 SEEK SIGN TDEN TDOR TDRC TDRL TDTG TIPL TMCL TMOO TPRO TSOA TSOP TSOT TSST)
       v24_frames.each { |key| @dict.delete key if include? key }
     end
+
+    # Remove tags from a file.
+    #
+    # Keyword arguments:
+    #
+    # * delete_v1 -- delete any ID3v1 tag
+    # * delete_v2 -- delete any ID3v2 tag
+    def self.delete(filename:nil, delete_v1:true, delete_v2:true)
+      File.open(filename) do |f|
+        if delete_v1
+          flag = true
+          begin
+            f.seek -128, IO::SEEK_END
+          rescue IOError
+            flag = false
+            # ignore
+          end
+          if flag and f.read(3) == 'TAG'
+            f.seek -128, IO::SEEK_END
+            f.truncate f.pos
+          end
+        end
+
+        # technically an insize=0 tag is invalid, but we delete it anyway
+        # (primarily because we used to write it)
+        if delete_v2
+          f.rewind
+          idata = f.read 10
+          begin
+            val = idata.unpack('a3C4a4')
+            if val.include? nil or
+                val.first.bytesize != 3 or
+                val.last.bytesize != 4
+              id3, insize = '', -1
+            else
+              id3, vmaj, vrev, flags, insize = val
+            end
+            insize = BitPaddedInteger.new insize
+            if id3 == 'ID3' and insize >= 0
+              Mutagen::delete_bytes(f, insize + 10, 0)
+            end
+          end
+        end
+      end
+    end
+
+    # Parse an ID3v1 tag, returning a list of ID3v2.4 frames.
+    def parse_ID3v1(string)
+      idx = string.index('TAG')
+      return if idx.nil?
+      string = string.fetch(idx)
+      return if 128 < string.size or string.size < 124
+
+      # Issue #69 - Previous versions of Mutagen, when encountering
+      # out-of-spec TDRC and TYER frames of less than four characters,
+      # wrote only the characters available - e.g. "1" or "" - into the
+      # year field. To parse those, reduce the size of the year field.
+      # Amazingly, "0s" works as a struct format string.
+      unpack_fmt =  'a3a30a30a30a%da29CC' % (string.size - 124)
+
+      val = string.unpack unpack_fmt
+      return if val.include? nil# or val.any? {|i| i.empty?}
+      tag, title, artist, album, year, comment, track, genre = val
+      return if tag != 'TAG'
+
+      def fix(string)
+        string.split("\x00").first.strip.force_encoding("ISO-8859-1")
+      end
+
+      [title, artist, album, year, comment].map! { |e| fix e }
+
+      frames = {}
+      unless title.nil? or title.empty?
+        frames['TIT2'] = TIT2.new encoding:0, text:title
+      end
+      unless artist.nil? or artist.empty?
+        frames['TPE1'] = TPE1.new encoding:0, text:[artist]
+      end
+      unless album.nil? or album.empty?
+        frames['TALB'] = TALB.new encoding:0, text:album
+      end
+      unless year.nil? or year.empty?
+        frames['TDRC'] = TDRC.new encoding:0, text:year
+      end
+      unless comment.nil? or comment.empty?
+        frames['COMM'] = COMM.new encoding:0, lang:'eng', desc:'ID3v1 Comment', text:comment
+      end
+      # Don't read a track number if it looks like the comment was
+      # padded with spaces instead of nulls (thanks, WinAmp).
+      if not track.nil? and not track.empty? and
+          (track != 32 or string[-3] == "\x00")
+          frames['TRCK'] = TRCK encoding:0, text:track.to_s
+      end
+      if genre != 255
+          frames['TCON'] = TCON.new encoding:0, text:genre.to_s
+      end
+      frames
+    end
   end
 end
