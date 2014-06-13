@@ -424,4 +424,32 @@ class TestID3v1Tags < MiniTest::Test
     assert_equal empty, id3.make_ID3v1({ 'COMM' => Frames::COMM.new(encoding:0,
                                                                     text:'')})
   end
+
+  def test_make_v1_from_tyer
+    id3 = Mutagen::ID3
+    assert_equal id3.make_ID3v1({"TDRC"=> Frames::TDRC.new(text:'2010-10-10')}),
+                 id3.make_ID3v1({"TYER"=> Frames::TYER.new(text:'2010')})
+    assert_equal id3.parse_ID3v1(id3.make_ID3v1({"TDRC"=> Frames::TDRC.new(text:'2010-10-10')})),
+                 id3.parse_ID3v1(id3.make_ID3v1({"TYER"=> Frames::TYER.new(text:'2010')}))
+  end
+
+  def test_invalid
+    assert_nil Mutagen::ID3.parse_ID3v1('')
+  end
+
+  def test_invalid_track
+    id3 = Mutagen::ID3
+    tag = {}
+    tag['TRCK'] = Frames::TRCK.new(encoding:0, text:'not a number')
+    v1tag = id3.make_ID3v1(tag)
+    refute_includes id3.parse_ID3v1(v1tag), 'TRCK'
+  end
+
+  def test_v1_genre
+    id3 = Mutagen::ID3
+    tag = {}
+    tag['TCON'] = Frames::TCON.new(encoding:0, text:'Pop')
+    v1tag = id3.make_ID3v1(tag)
+    assert_equal ['Pop'], id3.parse_ID3v1(v1tag)['TCON'].genres
+  end
 end

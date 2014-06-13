@@ -136,11 +136,11 @@ module Mutagen
       end
 
       year = if id3.has_key? 'TDRC'
-        id3['TDRC'].to_s.encode('UTF-8')
+        id3['TDRC']
       elsif id3.has_key? 'TYER'
-        id3['TYER'].encode('UTF-8')
+        id3['TYER']
       else ''
-      end
+      end.to_s.encode('UTF-8')
 
       v1['year'] = (year + "\x00\x00\x00\x00")[0...4]
 
