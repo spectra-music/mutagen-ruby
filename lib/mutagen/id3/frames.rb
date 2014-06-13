@@ -6,10 +6,8 @@ require 'zlib'
 
 module Mutagen
   class ID3 < Mutagen::Metadata
-    include Specs
-
-    def is_valid_frame_id(frame_id)
-      frame_id =~ /[[:alnum:]]/ and frame_id =~ /[[:upper:]]/
+    def self.is_valid_frame_id(frame_id)
+      frame_id =~ /^[A-Z0-9]+$/
     end
 
     module ParentFrames
@@ -18,7 +16,6 @@ module Mutagen
       # ID3 tags are split into frames. Each frame has a potentially
       # different structure, and so this base class is not very featureful.
       class Frame
-
         FLAG23_ALTERTAG  = 0x8000
         FLAG23_ALTERFILE = 0x4000
         FLAG23_READONLY  = 0x2000
@@ -154,6 +151,9 @@ module Mutagen
           "#<#{self.class} #{self.to_s}>"
         end
 
+        def hash
+          raise TypeError, 'Frames cannot be used as Hash keys'
+        end
 
         # Construct this ID3 frame from raw string dta
         def self.from_data(id3, tflags, data)
@@ -219,7 +219,7 @@ module Mutagen
       class FrameOpt < Frame
         OPTIONALSPEC = []
 
-        def initialize
+        def initialize(*args, **kwargs)
           super(*args, ** kwargs)
           self.class::OPTIONALSPEC.each do |spec|
             if kwargs.has_key? spec.name
@@ -1010,11 +1010,15 @@ module Mutagen
         end
 
         def ==(other)
+          begin
           (self.to_s == other) or
               (desc == other.desc and
                   channel == other.channel and
                   gain == other.gain and
                   peak == other.peak)
+          rescue NoMethodError
+            false
+          end
         end
 
         def to_s
@@ -1558,7 +1562,7 @@ module Mutagen
       end
 
       # Content group description
-      class TTI < Frames::TIT1
+      class TT1 < Frames::TIT1
       end
 
       # Title

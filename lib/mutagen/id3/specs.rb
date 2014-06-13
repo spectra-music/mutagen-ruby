@@ -1,6 +1,6 @@
 require 'mutagen/id3/util'
 module Mutagen
-  class ID3
+  class ID3 < Mutagen::Metadata
     module Specs
 
       class Spec
@@ -311,6 +311,8 @@ module Mutagen
       class ID3TimeStamp
         include Comparable
 
+        attr_accessor :year, :month, :day, :hour, :minute, :second
+
         def initialize(text)
           if text.is_a? ID3TimeStamp
             text = text.text
@@ -335,16 +337,17 @@ module Mutagen
             break if part.nil?
             pieces << formats[i] % part + seps[i]
           end
-          pieces.join[0...-1] unless pieces.nil?
+          pieces.join[0...-1] unless pieces.empty?
         end
 
 
         def text=(text, splitre=/[-T:\/.]|\s+/)
           year, month, day, hour, minute, second =
-              (text + ":::::").split(splitre)[0...6]
+              (text + ':::::').split(splitre)[0...6]
           [:year, :month, :day, :hour, :minute, :second].each do |a|
-            v = if binding.local_variable_defined?(a) and binding.local_variable_get(a) =~ /^\d+$/
-                  Integer(binding.local_variable_get(a))
+            v = if binding.local_variable_defined?(a) and
+                binding.local_variable_get(a) =~ /^\d+$/
+                  binding.local_variable_get(a).to_i
                 end
             instance_variable_set("@#{a.to_s}", v)
           end
@@ -369,7 +372,6 @@ module Mutagen
           text.encode(*args)
         end
       end
-
 
       class TimeStampSpec < EncodedTextSpec
         def read(frame, data)

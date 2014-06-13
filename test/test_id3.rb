@@ -1,7 +1,6 @@
 require_relative 'test_helper'
 include Mutagen
 
-
 ID3_22 = ID3.new; ID3_22.instance_variable_set('@version', ID3::V22)
 ID3_23 = ID3.new; ID3_23.instance_variable_set('@version', ID3::V23)
 ID3_24 = ID3.new; ID3_24.instance_variable_set('@version', ID3::V24)

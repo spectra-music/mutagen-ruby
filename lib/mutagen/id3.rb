@@ -16,7 +16,7 @@
 # always accept null separators to generate multi-valued text frames.
 #
 # Because ID3 frame structure differs between frame types, each frame is
-# implemented as a different class (e.g. TIT2 as Mutagen::ID3::TIT2). Each
+# implemented as a different class (e.g. TIT2 as {Mutagen::ID3::Frames::TIT2}). Each
 # frame's documentation contains a list of its attributes.
 #
 # Since this file's documentation is a little unwieldy, you are probably
@@ -41,10 +41,10 @@ module Mutagen
     include Mutagen::DictProxy
 
     PEDANTIC = true
-    V24      = Gem::Version.new "2.4.0"
-    V23      = Gem::Version.new "2.3.0"
-    V22      = Gem::Version.new "2.2.0"
-    V11      = Gem::Version.new "1.1"
+    V24      = Gem::Version.new '2.4.0'
+    V23      = Gem::Version.new '2.3.0'
+    V22      = Gem::Version.new '2.2.0'
+    V11      = Gem::Version.new '1.1'
 
     attr_reader :version, :size
 
@@ -207,7 +207,9 @@ module Mutagen
     # Add a frame to the tag
     def add(tag)
       # turn 2.2 into 2.3/2.4 tags
-      tag                = tag.class.superclass.new(tag) if tag.class.to_s.size == 3
+      if tag.class.name.split('::').last.length == 3
+        tag = tag.class.superclass.new(tag)
+      end
       self[tag.hash_key] = tag
     end
 
@@ -338,14 +340,11 @@ module Mutagen
         bpi = determine_bpi(data, frames)
         until data.empty?
           header = data[0...10]
-          if (vals = header.unpack('a4L>S>')).include? nil
-            return # not enough header
-          else
-            name, size, flags = vals
-          end
-          if Mutagen.strip_arbitrary(name, "\x00").empty?
-            return
-          end
+          vals = header.unpack('a4L>S>')
+          # not enough header
+          return if vals.include? nil
+          name, size, flags = vals
+          return if Mutagen.strip_arbitrary(name, "\x00").empty?
           size      = if Integer == bpi then size.to_i else bpi.new(size) end
           framedata = data[10...10+size.to_i]
           data      = data[10+size.to_i..-1]
@@ -357,7 +356,7 @@ module Mutagen
           begin
             tag = frames.const_get(name.to_sym)
           rescue NameError
-            yield(header + framedata) if is_valid_frame_id(name)
+            yield(header + framedata) if ID3::is_valid_frame_id(name)
           else
             begin
               yield load_framedata(tag, flags, framedata)
@@ -369,17 +368,15 @@ module Mutagen
           end
         end
       elsif V22 <= @version
-        while data > 0
+        until data.empty?
           header = data[0...6]
-          if (vals = header.unpack('a3a3')).include? nil
-            return # not enough header
-          else
-            name, size = vals
-          end
-          size, _ = ("\x00" + size), unpack('L>')
-          if name.strip("\x00").empty?
-            return
-          end
+          vals = header.unpack('a3a3')
+          # Not enough header. 6 corresponds to the header unpacking string
+          return if vals.inject(:+).bytesize != 6
+          name, size = vals
+
+          size, _ = ("\x00" + size).unpack('L>')
+          return if Mutagen::strip_arbitrary(name, "\x00").empty?
           framedata = data[6...6+size]
           data      = data[6+size..-1]
           if size == 0
@@ -388,7 +385,7 @@ module Mutagen
           begin
             tag = frames.const_get(name.to_sym)
           rescue NameError
-            yield(header + framedata) if is_valid_frame_id(name)
+            yield(header + framedata) if ID3::is_valid_frame_id(name)
           else
             begin
               yield load_framedata(tag, 0, framedata)
