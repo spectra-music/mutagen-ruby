@@ -84,7 +84,7 @@ module Mutagen
           if frames.nil?
             if V23 <= @version
               frames = Frames
-            elsif V24 <= @version
+            elsif V22 <= @version
               frames = Frames_2_2
             end
           end
@@ -404,11 +404,12 @@ module Mutagen
 
         # Sort frames by 'importance'
         order  = %w(TIT2 TPE1 TRCK TALB TPOS TDRC TCON).each_with_index.to_a
+        order = Hash[order]
         last   = order.size
         frames = items
         frames.sort_by! { |a| [order[a[0][0...4]] || last, a[0]] }
 
-        framedata = frames.each { |_, frame| save_frame(frame, version: version, v23_sep: v23_sep) }
+        framedata = frames.map { |_, frame| save_frame(frame, version: version, v23_sep: v23_sep) }
 
         # only write unknown frames if they were loaded from the version
         # we are saving with or upgraded it to
@@ -438,10 +439,95 @@ module Mutagen
 
         framesize = BitPaddedInteger.to_str(outsize, width:4)
         header = ['ID3'.b, v2_version, 0, 0, framesize].pack('a3C3a4')
-        return header, outsize, insize
+        return header, outsize.to_i, insize.to_i
       end
 
-      # save #########################
+      # Save changes to a file.
+      #
+      # If no filename is given, the one most recently loaded is used.
+      #
+      # Keyword arguments:
+      # v1 -- if 0, ID3v1 tags will be removed
+      #       if 1, ID3v1 tags will be updated but not added
+      #       if 2, ID3v1 tags will be created and/or updated
+      # v2 -- version of ID3v2 tags (3 or 4).
+      #
+      # By default Mutagen saves ID3v2.4 tags. If you want to save ID3v2.3
+      # tags, you must call method update_to_v23 before saving the file.
+      #
+      # v23_sep -- the separator used to join multiple text values
+      #            if v2_version == 3. Defaults to '/' but if it's None
+      #            will be the ID3v2v2.4 null separator.
+      #
+      # The lack of a way to update only an ID3v1 tag is intentional.
+      def save(filename:nil, v1:1, v2_version:4, v23_sep:'/')
+        framedata = prepare_framedata(v2_version, v23_sep)
+        framesize = framedata.bytesize
+
+        if framedata.nil? or framedata.empty?
+          begin
+            delete_tags filename
+          rescue SystemCallError => err
+            unless err.is_a? Errno::ENOENT
+              raise err
+            end
+          end
+          return nil
+        end
+
+        filename = @filename if filename.nil? or filename.empty?
+        begin
+          f = File.open(filename, 'rb+')
+        rescue SystemCallError => err
+          raise err unless err.is_a? Errno.ENOENT
+          File.open(filename, 'ab')
+          f= File.open(filename, 'rb+')
+        end
+
+        begin
+          f.rewind  # Go to the beginning
+          idata = f.read 10
+
+          header = prepare_id3_header(idata, framesize, v2_version)
+          header, outsize, insize = header
+
+          data = header + framedata + ("\x00".b * (outsize - framesize))
+          if insize < outsize
+            Mutagen::insert_bytes(f, outsize-insize, insize+10)
+          end
+          f.rewind
+          f.write data
+
+          begin
+            f.seek -128, IO::SEEK_END
+          rescue SystemCallError => err
+            # If the file is too small, that's OK - it just means
+            # we're certain it doesn't have a v1 tag
+            # If we failed to see for some other reason, bail out
+            return unless err.is_a? Errno::EINVAL
+            f.seek 0, IO::SEEK_END
+          end
+          data = f.read 128
+          idx = data.index("TAG")
+          if idx.nil?
+            offset = 0
+            has_v1 = false
+          else
+            offset = idx - data.bytesize
+            has_v1 = true
+          end
+
+          f.seek offset, IO::SEEK_END
+          if v1 == 1 and has_v1 or v1 == 2
+            f.write ID3::make_ID3v1(self)
+          else
+            f.truncate f.pos
+          end
+
+        ensure
+          f.close
+        end
+      end
 
       # Remove tags from a file.
       #

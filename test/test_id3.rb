@@ -453,3 +453,66 @@ class TestID3v1Tags < MiniTest::Test
     assert_equal ['Pop'], id3.parse_ID3v1(v1tag)['TCON'].genres
   end
 end
+
+class TestWriteID3v1 < MiniTest::Test
+  require 'tempfile'
+  SILENCE = File.expand_path('../data/silence-44-s.mp3', __FILE__)
+
+  def setup
+    @temp = Tempfile.new(['silence', '.mp3'], encoding: 'ISO-8859-1')
+    IO.write(@temp.path, IO.read(SILENCE))
+    @audio = Mutagen::ID3::ID3Data.new @temp.path
+  end
+
+  def fail_if_v1
+    File.open(@temp.path) do |f|
+      f.seek(-128, IO::SEEK_END)
+      refute_equal 'TAG', f.read(3)
+    end
+  end
+
+  def fail_unless_v1
+    File.open(@temp.path) do |f|
+      f.seek(-128, IO::SEEK_END)
+      assert_equal 'TAG', f.read(3)
+    end
+  end
+
+  def test_save_delete
+    @audio.save v1:0
+    fail_if_v1
+  end
+
+  def test_save_add
+    @audio.save v1:2
+    fail_unless_v1
+  end
+
+  def test_save_defaults
+    @audio.save v1:0
+    fail_if_v1
+    @audio.save v1:1
+    fail_if_v1
+    @audio.save v1:2
+    fail_unless_v1
+    @audio.save v1:1
+    fail_unless_v1
+  end
+
+  def teardown
+    @temp.unlink
+    @temp.close
+  end
+end
+
+class TestV22Tags < MiniTest::Test
+  def setup
+    path = File.expand_path('../data/id3v22-test.mp3', __FILE__)
+    @tags = Mutagen::ID3::ID3Data.new path
+  end
+
+  def test_tags
+    assert_equal ['3/11'], @tags['TRCK'].text
+    assert_equal ['Anais Mitchell'], @tags['TPE1'].text
+  end
+end
