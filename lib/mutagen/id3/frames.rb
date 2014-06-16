@@ -116,13 +116,13 @@ module Mutagen
             raise ID3JunkFrameError if data.empty?
             begin
               value, data = reader.read(self, data)
-              #rescue
-              #  raise ID3JunkFrameError
+            # rescue
+            #   raise ID3JunkFrameError
             end
             instance_variable_set("@#{reader.name}", value)
           end
-          leftover = Mutagen.strip_arbitrary(data, "\x00")
-          unless leftover.empty?
+          leftover = Mutagen.strip_arbitrary(data, "\x00") unless data.nil?
+          unless leftover.nil? or leftover.empty?
             warn "Leftover data: #{self.class}: #{data} (from #{odata})"
           end
         end
@@ -151,7 +151,7 @@ module Mutagen
         alias_method :to_s, :_pprint
 
         def inspect
-          "#<#{self.class} #{self.to_s}>"
+          "#<#{self.class} #{self.to_s.encode('UTF-8')}>"
         end
 
         def hash
@@ -210,7 +210,7 @@ module Mutagen
           frame.singleton_class.class_eval { attr_reader :raw_data }
           frame.instance_variable_set('@flags', tflags)
           frame.singleton_class.class_eval { attr_reader :flags }
-          frame.read_data(data)
+          frame.send(:read_data,data)
           frame
         end
       end
@@ -225,8 +225,8 @@ module Mutagen
         def initialize(*args, **kwargs)
           super(*args, ** kwargs)
           self.class::OPTIONALSPEC.each do |spec|
-            if kwargs.has_key? spec.name
-              validated = spec.validate(self, kwargs[spec.name])
+            if kwargs.has_key? spec.name.to_sym
+              validated = spec.validate(self, kwargs[spec.name.to_sym])
               instance_variable_set("@#{spec.name}", validated)
               self.class.send('attr_reader', spec.name.to_sym)
             else
@@ -242,18 +242,18 @@ module Mutagen
             raise ID3JunkFrameError if data.empty?
             value, data = reader.read(self, data)
             instance_variable_set("@#{reader.name}", value)
-            self.class.send('attr_reader', spec.name.to_sym) unless self.respond_to? spec.name.to_sym
+            self.class.send('attr_reader', reader.name.to_sym) unless self.respond_to? reader.name.to_sym
           end
           unless data.nil? or data.empty?
             self.class::OPTIONALSPEC.each do |reader|
               break if data.empty?
               value, data = reader.read(self, data)
               instance_variable_set("@#{reader.name}", value)
-              self.class.send('attr_reader', spec.name.to_sym) unless self.respond_to? spec.name.to_sym
+              self.class.send('attr_reader', reader.name.to_sym) unless self.respond_to? reader.name.to_sym
             end
           end
-          leftover = Mutagen.strip_arbitrary(data, "\x00")
-          unless leftover.empty?
+          leftover = Mutagen.strip_arbitrary(data, "\x00") unless data.nil?
+          unless leftover.nil? or leftover.empty?
             warn "Leftover data: #{self.class}: #{data} (from #{odata})"
           end
         end
@@ -315,8 +315,12 @@ module Mutagen
         end
 
         def ==(other)
-          if other.is_a? String
+          case other
+          when String
+            # Python does comparisons in utf-8
             self.to_s == other
+          when Array
+            self.to_a == other
           else
             @text == other.text
           end
@@ -1278,12 +1282,12 @@ module Mutagen
 
         def hash_key
           str = "#{frame_id}:#{frameid}:#{url}"
-          str << ":#{data}" unless data.nil?
+          str << ":#{@data}" unless @data.nil?
           str
         end
 
         def ==(other)
-          (data.nil? ? [frame_id, url, data] : [frame_id, url]) == other
+          @data.nil? ? [frameid, url] == other : [frameid, url, @data] == other
         end
       end
 
@@ -1416,7 +1420,9 @@ module Mutagen
         end
 
         def ==(other)
-          write_data == other.write_data
+          ours = write_data
+          theirs = other.write_data
+          ours == theirs
         end
       end
 
@@ -1555,7 +1561,7 @@ module Mutagen
         ]
 
         def ==(other)
-          Fi == other
+          @Fi == other
         end
       end
     end

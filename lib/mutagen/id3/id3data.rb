@@ -480,7 +480,7 @@ module Mutagen
           f = File.open(filename, 'rb+')
         rescue SystemCallError => err
           raise err unless err.is_a? Errno.ENOENT
-          File.open(filename, 'ab')
+          File.open(filename, 'ab').close
           f= File.open(filename, 'rb+')
         end
 

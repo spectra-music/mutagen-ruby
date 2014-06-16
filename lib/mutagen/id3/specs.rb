@@ -40,7 +40,7 @@ module Mutagen
 
       class IntegerSpec < Spec
         def read(frame, data)
-          BitPaddedInteger.new(data, 8).to_int
+          BitPaddedInteger.new(data, bits:8).to_int
         end
 
         def write(frame, value)
@@ -60,11 +60,11 @@ module Mutagen
         end
 
         def read(frame, data)
-          return BitPaddedInteger(data, bits: 8).to_int, ''
+          return BitPaddedInteger.new(data[0...@size], bits: 8).to_int, data[@size..-1]
         end
 
         def write(frame, value)
-          BitPaddedInteger.to_str(value, bits: 8, width: -1)
+          BitPaddedInteger.to_str(value, bits: 8, width: @size)
         end
 
         def validate(frame, value)
@@ -183,7 +183,7 @@ module Mutagen
           if data.bytesize < term.bytesize
             return '', ret
           else
-            return data.force_encoding(enc), ret
+            return data.force_encoding(enc).encode('utf-8'), ret
           end
         end
 
@@ -283,7 +283,7 @@ module Mutagen
       class Latin1TextSpec < EncodedTextSpec
         def read(frame, data)
           if data.include? "\x00"
-            data, ret = data.split("\x00", 2)
+            data, ret = data.split("\x00".b, 2)
           else
             ret = ''
           end
@@ -429,7 +429,7 @@ module Mutagen
             raise ID3JunkFrameError
           end
           shift = ((8 - (bits & 7)) & 7) + (4 - bytes) * 8
-          (1..bytes).times do |i|
+          (1..bytes).each do |i|
             peak *= 256
             peak += data[i].ord
           end
