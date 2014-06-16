@@ -544,7 +544,7 @@ module TestTags
       ['TIPL', "\x02\x00a\x00\x00\x00b", [%w(a b)], '', {encoding:2}],
       ['TIT1', "\x00a/".b, 'a/', '', {encoding:0}],
       # TIT2 checks misaligned terminator "\x00\x00" across crosses utf16 chars
-      ['TIT2', "\x01\xff\xfe\x38\x00\x00\x38", "8\u3800"],
+      ['TIT2', "\x01\xff\xfe\x38\x00\x00\x38", "8\u3800", '', {encoding:1}],
       ['TIT3', "\x00a/".b, 'a/', '', {encoding:0}],
       ['TKEY', "\x00A#m".b, 'A#m', '', {encoding:0}],
       ['TLAN', "\x006241".b, '6241', '', {encoding:0}],
@@ -579,9 +579,9 @@ module TestTags
       ['TSSE', "\x0012345".b, '12345', '', {encoding:0}],
       ['TSST', "\x0012345".b, '12345', '', {encoding:0}],
       ['TYER', "\x002004".b, '2004', 2004, {encoding:0}],
-      #
-      # ['TXXX', "\x00usr\x00a/b\x00c", %w(a/ c), '',
-      #           {encoding:0, desc: 'usr' }],
+
+      ['TXXX', "\x00usr\x00a/b\x00c", %w(a/b c), '',
+                {encoding:0, desc: 'usr' }],
 
       ['WCOM', 'http://foo', 'http://foo', '', {}],
       ['WCOP', 'http://bar', 'http://bar', '', {}],
@@ -607,8 +607,8 @@ module TestTags
       ['COMM', "\x00\x00\xcc\x01\x00     ".b, '     ', '',
                 {desc:'', lang:"\x00\xcc\x01".b, encoding:0}],
 
-      # ['APIC', "\x00-->\x00\x03cover\x00cover.jpg".b, 'cover.jpg', '',
-      #          {mime: '-->', type:3, desc: 'cover', encoding:0}],
+      ['APIC', "\x00-->\x00\x03cover\x00cover.jpg", 'cover.jpg', '',
+               {mime: '-->', type:3, desc: 'cover', encoding:0}],
       ['USER', "\x00ENUCom".b, 'Com', '', {lang: 'ENU', encoding:0}],
 
       ['RVA2', "testdata\x00\x01\xfb\x8c\x10\x12\x23".b,
@@ -641,17 +641,17 @@ module TestTags
       ['USLT', "\x00engsome lyrics\x00woo\nfun".b, "woo\nfun".b, '',
                 {encoding:0, lang: 'eng', desc: 'some lyrics', text:"woo\nfun"}],
 
-      # ['SYLT', ["\x00eng\x02\x01some lyrics\x00foo\x00\x00\x00\x00\x01bar\x00\x00\x00\x00\x10"], 'foobar', '',
-      #     {encoding:0, lang: 'eng', type:1, format:2, desc: 'some lyrics' }],
+      ['SYLT', "\x00eng\x02\x01some lyrics\x00foo\x00\x00\x00\x00\x01bar\x00\x00\x00\x00\x10", 'foobar', '',
+          {encoding:0, lang: 'eng', type:1, format:2, desc: 'some lyrics' }],
 
       ['POSS', "\x01\x0f".b, 15, 15, {format:1, position:15}],
       ['OWNE', "\x00USD10.01\x0020041010CDBaby".b, 'CDBaby', 'CDBaby',
                 {encoding:0, price: 'USD10.01', date: '20041010', seller: 'CDBaby' }],
 
-      ['PRIV', "a@b.org\x00random data".b, 'random data', 'random data',
+      ['PRIV', "a@b.org\x00random data", 'random data', 'random data',
                 {owner: 'a@b.org', data: 'random data' }],
-      ['PRIV', "a@b.org\x00\xdd".b, "\xdd".b, "\xdd".b,
-                {owner: 'a@b.org', data:"\xdd"}],
+      ['PRIV', "a@b.org\x00\x53", "\x53", "\x53",
+                {owner: 'a@b.org', data:"\x53"}],
 
       ['SIGN', "\x92huh?".b, 'huh?', 'huh?', {group:0x92, sig: 'huh?' }],
       ['ENCR', "a@b.org\x00\x92Data!".b, 'Data!', 'Data!',
@@ -699,8 +699,8 @@ module TestTags
                 {frames:1, bytes:2, milliseconds:3, bits_for_bytes:4,
                      bits_for_milliseconds:8, data: 'foobar' }],
 
-      # ['EQU2', "\x00Foobar\x00\x01\x01\x04\x00".b, [[128.5, 2.0]], '',
-      #           {method:0, desc: 'Foobar' }],
+      ['EQU2', "\x00Foobar\x00\x01\x01\x04\x00", [[128.5, 2.0]], '',
+                {method:0, desc: 'Foobar' }],
 
       ['ASPI', "\x00\x00\x00\x00\x00\x00\x00\x10\x00\x03\x08\x01\x02\x03".b,
                 [1, 2, 3], '', {S:0, L:16, N:3, b:8}],
@@ -722,8 +722,8 @@ module TestTags
 
       # 2.2 tags
       ['UFI', "own\x00data".b, 'data', '', {data: 'data', owner: 'own' }],
-      # ['SLT', ["\x00eng\x02\x01some lyrics\x00foo\x00\x00\x00\x00\x01bar\x00\x00\x00\x00\x10"], 'foobar', '',
-      #     {encoding:0, lang: 'eng', type:1, format:2, desc: 'some lyrics' }],
+      ['SLT', "\x00eng\x02\x01some lyrics\x00foo\x00\x00\x00\x00\x01bar\x00\x00\x00\x00\x10", 'foobar', '',
+          {encoding:0, lang: 'eng', type:1, format:2, desc: 'some lyrics' }],
       ['TT1', "\x00ab\x00".b, 'ab', '', {encoding:0}],
       ['TT2', "\x00ab".b, 'ab', '', {encoding:0}],
       ['TT3', "\x00ab".b, 'ab', '', {encoding:0}],
@@ -779,8 +779,8 @@ module TestTags
 
       ['COM', "\x00ENUT\x00Com".b, 'Com', '',
                {desc: 'T', lang: 'ENU', encoding:0}],
-      # ['PIC', "\x00-->\x03cover\x00cover.jpg".b, 'cover.jpg', '',
-      #          {mime: '-->', type:3, desc: 'cover', encoding:0}],
+      ['PIC', "\x00-->\x03cover\x00cover.jpg", 'cover.jpg', '',
+               {mime: '-->', type:3, desc: 'cover', encoding:0}],
 
       ['POP', "foo@bar.org\x00\xde\x00\x00\x00\x11".b, 222, 222,
                {email: 'foo@bar.org', rating:222, count:17}],
@@ -817,25 +817,49 @@ module TestTags
   repr_tests = {}
   write_tests = {}
 
-  tests.each_with_index do |val,i|
-    tag, data, value, intval, info = val
-    load_tests[("test_#{tag}_#{i}").to_sym] =
+  tests.each_with_index do |arr,i|
+    load_tests[("test_#{arr[0]}_#{i}").to_sym] =
         Proc.new do
+          tag, data, value, intval, info = arr
           tag_class = Mutagen::ID3::Frames.const_get(tag) or Mutagen::ID3::Frames_2_2.const_get(tag)
           tag = tag_class.from_data(ID3_23, 0, data)
           assert tag.respond_to?(:hash_key)
           assert tag.respond_to?(:pprint)
           assert_equal tag, value
-          # case value
-          # when String
-          #   begin
-          #     assert(tag == value)
-          #   rescue NoMethodError
-          #     assert_equal value, tag.to_s
-          #   end
-          # when Array
-          #   assert_equal value, tag.to_a
-          # end
+          unless info.include? :encoding
+            assert_nil tag.instance_variable_get('@encoding')
+          end
+          info.each do |attr, value|
+            t = tag
+            unless value.is_a? Array or t.is_a? Array
+              value = [value]
+              t = [t]
+            end
+            value.zip(t).each do |value, t|
+              if value.is_a? Float
+                assert_in_delta value, t.instance_variable_get("@#{attr}")
+              else
+                assert_equal t.instance_variable_get("@#{attr}"), value
+              end
+              # if intval.is_a? Fixnum
+              #   assert_equal intval, (+t)
+              # end
+            end
+          end
+        end
+
+    write_tests[("test_write_#{arr[0]}_#{i}").to_sym] =
+        Proc.new do
+          tag, data, value, intval, info = arr
+          tag_class = Mutagen::ID3::Frames.const_get(tag) or Mutagen::ID3::Frames_2_2.const_get(tag)
+          tag = tag_class.from_data(ID3_24, 0, data)
+          towrite = tag.send(:write_data)
+          assert_equal Encoding::ASCII_8BIT, towrite.encoding
+          tag2 = tag_class.from_data(ID3_24, 0, towrite)
+          tag_class::FRAMESPEC.each do |spec|
+            attr = spec.name
+            assert_equal tag.instance_variable_get("@#{attr}"), tag2.instance_variable_get("@#{attr}")
+          end
         end
   end
 
@@ -844,19 +868,95 @@ module TestTags
     test_read_tags.class_eval { define_method(name, proc) }
   end
 
-  # frames = Mutagen::ID3::Frames.constants.select {|c| Mutagen::ID3::Frames.const_get(c).is_a? Class }
-  # frames_2_2 = Mutagen::ID3::Frames_2_2.constants.select {|c| Mutagen::ID3::Frames_2_2.const_get(c).is_a? Class }
-  # check = (frames + frames_2_2).map{|k| [k, nil]}.to_h
+  test_write_tags = Object.const_set('TestWriteTags', Class.new(MiniTest::Test))
+  write_tests.each_pair do |name, proc|
+    test_write_tags.class_eval { define_method(name, proc) }
+  end
 
-  # tested_tags = tests.map{|r| [r[0].to_sym, nil]}.to_h
-  # test_tested_tags = Object.const_set('TestTestedTags', Class.new(MiniTest::Test))
-  # check.each_pair do |tag,_|
-  #   test_tested_tags.class_eval do
-  #     define_method("test_#{tag}_tested") do
-  #       assert self.class.const_get('TESTED_TAGS').has_key?(tag), "Didn't test tag #{tag}"
-  #     end
-  #   end
-  # end
-  # test_tested_tags.const_set('TESTED_TAGS', tested_tags)
+  frames = Mutagen::ID3::Frames.constants.select {|c| Mutagen::ID3::Frames.const_get(c).is_a? Class }
+  frames_2_2 = Mutagen::ID3::Frames_2_2.constants.select {|c| Mutagen::ID3::Frames_2_2.const_get(c).is_a? Class }
+  check = (frames + frames_2_2).map{|k| [k, nil]}.to_h
 
+  tested_tags = tests.map{|r| [r[0].to_sym, nil]}.to_h
+  test_tested_tags = Object.const_set('TestTestedTags', Class.new(MiniTest::Test))
+  check.each_pair do |tag,_|
+    test_tested_tags.class_eval do
+      define_method("test_#{tag}_tested") do
+        assert self.class.const_get('TESTED_TAGS').has_key?(tag), "Didn't test tag #{tag}"
+      end
+    end
+  end
+  test_tested_tags.const_set('TESTED_TAGS', tested_tags)
+
+end
+
+class UpdateTo24 < MiniTest::Test
+  def test_pic
+    pic = Mutagen::ID3::Frames_2_2::PIC
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.instance_variable_set('@version', Mutagen::ID3::ID3Data::V22)
+    id3.add(pic.new(encoding:0, mime: 'PNG', desc: 'cover', type:3, data:''))
+    id3.update_to_v24
+    assert_equal 'image/png', id3['APIC:cover'].mime
+  end
+
+  def test_tyer
+    tyer = Mutagen::ID3::Frames::TYER
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.instance_variable_set('@version', Mutagen::ID3::ID3Data::V23)
+    id3.add(tyer.new(encoding:0, text:'2006'))
+    id3.update_to_v24
+    assert_equal '2006', id3['TDRC'].to_s
+  end
+
+  def test_tyer_tdat
+    tdat = Mutagen::ID3::Frames::TDAT
+    tyer = Mutagen::ID3::Frames::TYER
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.instance_variable_set('@version', Mutagen::ID3::ID3Data::V23)
+    id3.add(tyer.new(encoding:0, text:'2006'))
+    id3.add(tdat.new(encoding:0, text:'0603'))
+    id3.update_to_v24
+    assert_equal '2006-03-06', id3['TDRC'].to_s
+  end
+
+  def test_tyer_tdat_time
+    tdat = Mutagen::ID3::Frames::TDAT
+    tyer = Mutagen::ID3::Frames::TYER
+    time = Mutagen::ID3::Frames::TIME
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.instance_variable_set('@version', Mutagen::ID3::ID3Data::V23)
+    id3.add(tyer.new(encoding:0, text:'2006'))
+    id3.add(tdat.new(encoding:0, text:'0603'))
+    id3.add(time.new(encoding:0, text:'1127'))
+    id3.update_to_v24
+    assert_equal '2006-03-06 11:27:00', id3['TDRC'].to_s
+  end
+
+  def test_tory
+    tory = Mutagen::ID3::Frames::TORY
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.instance_variable_set('@version', Mutagen::ID3::ID3Data::V23)
+    id3.add(tory.new(encoding:0, text:'2006'))
+    id3.update_to_v24
+    assert_equal '2006', id3['TDOR'].to_s
+  end
+
+  def test_ipls
+    ipls = Mutagen::ID3::Frames::IPLS
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.instance_variable_set('@version', Mutagen::ID3::ID3Data::V23)
+    id3.add(ipls.new(encoding:0, people:[%w(a b), %w(c d)]))
+    id3.update_to_v24
+    assert_equal [%w(a b), %w(c d)], id3['TIPL'].people
+  end
+
+  def test_dropped
+    time = Mutagen::ID3::Frames::TIME
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.instance_variable_set('@version', Mutagen::ID3::ID3Data::V23)
+    id3.add time.new(encoding:0, text:['1155'])
+    id3.update_to_v24
+    assert_empty id3.get_all('TIME')
+  end
 end

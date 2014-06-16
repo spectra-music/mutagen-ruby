@@ -628,7 +628,7 @@ module Mutagen
             date = @dict.delete('TYER').to_s
             unless Mutagen::strip_arbitrary((self['TDAT'] or '').to_s, "\x00").empty?
               dat = @dict.delete('TDAT').to_s
-              date = "#{date}-#{dat[0...2]}-#{dat[2..-1]}"
+              date = "#{date}-#{dat[2..-1]}-#{dat[0...2]}"
               unless Mutagen::strip_arbitrary((self['TIME'] or '').to_s, "\x00").empty?
                 time = @dict.delete('TIME').to_s
                 date += "T#{time[0...2]}:#{time[2..-1]}:00"
@@ -644,7 +644,7 @@ module Mutagen
 
         # TORY can be the first part of TDOR
         if include? 'TORY'
-          f = @dict.delete['TORY']
+          f = @dict.delete 'TORY'
           unless include? 'TDOR'
             begin
               add Frames::TDOR.new(encoding:0, text:f.to_s)
@@ -658,14 +658,14 @@ module Mutagen
         if include? 'IPLS'
           f = @dict.delete 'IPLS'
           unless include? "TIPL"
-            add Frames::TIPl.new(encoding:f.encoding, people:f.people)
+            add Frames::TIPL.new(encoding:f.encoding, people:f.people)
           end
         end
 
         # These can't be trivially translated to any ID3v2.4 tags, or
         # should have been removed already
         %w(RVAD EQUA TRDA TSIZ TDAT TIME CRM).each do |key|
-          @dict.delete key if include? key
+          @dict.delete key if has_key? key
         end
       end
 

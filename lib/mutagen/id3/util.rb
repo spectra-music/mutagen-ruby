@@ -136,7 +136,7 @@ module Mutagen
             shift         += bits
           end
         when String
-          value.reverse! if bigendian
+          value = value.reverse if bigendian
           value.each_byte do |byte|
             numeric_value += ((byte & mask) << shift)
             shift         += bits

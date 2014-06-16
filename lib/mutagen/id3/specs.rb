@@ -153,10 +153,10 @@ module Mutagen
         # completely by the ID3 specification. You can't just add
         # encodings here however you want.
         ENCODINGS = [
-            ['ISO-8859-1', "\x00"], # aka Latin-1
-            ['UTF-16', "\x00\x00"],
-            ['UTF-16BE', "\x00\x00"],
-            ['UTF-8', "\x00"]
+            ['ISO-8859-1', "\x00".b], # aka Latin-1
+            ['UTF-16', "\x00\x00".b],
+            ['UTF-16BE', "\x00\x00".b],
+            ['UTF-8', "\x00".b]
         ]
 
         def initialize(*args)
@@ -165,7 +165,7 @@ module Mutagen
 
         def read(frame, data)
           enc, term = ENCODINGS.fetch(frame.encoding)
-          ret       = ''
+          ret       = ''.b
           if term.bytesize == 1
             if data.include? term
               data, ret = data.split(term, 2)
@@ -190,7 +190,7 @@ module Mutagen
         # @raise [NoMethodError] if value doesn't have `.encode`
         def write(frame, value)
           enc, term = ENCODINGS[frame.encoding]
-          value.encode(enc) + term
+          (value.encode(enc).b + term).force_encoding(enc)
         end
 
         def validate(frame, value)
@@ -234,7 +234,7 @@ module Mutagen
               end
             end
           end
-          data.join
+          data.join.b
         end
 
         def validate(frame, value)
@@ -282,16 +282,16 @@ module Mutagen
       # Latin1 is known as "ISO-8859-1" in Ruby
       class Latin1TextSpec < EncodedTextSpec
         def read(frame, data)
-          if data.include? "\x00"
+          if data.include? "\x00".b
             data, ret = data.split("\x00".b, 2)
           else
-            ret = ''
+            ret = ''.b
           end
-          return data.encode, ret
+          return data.encode('UTF-8'), ret
         end
 
         def write(data, value)
-          value.encode('ISO-8859-1') + "\x00"
+          value.encode('ISO-8859-1') + "\x00".b
         end
 
         def validate(frame, value)
@@ -371,6 +371,10 @@ module Mutagen
         def encode(*args)
           text.encode(*args)
         end
+
+        def b
+          text.encode('UTF-8').b
+        end
       end
 
       class TimeStampSpec < EncodedTextSpec
@@ -443,7 +447,7 @@ module Mutagen
             raise Mutagen::ValueError, 'Unsigned Short out of range'
           end
           # Always write as 16bits for sanity
-          "\x10" + [number].pack('S>')
+          "\x10".b + [number].pack('S>')
         end
 
         def validate(frame, value)
@@ -478,7 +482,7 @@ module Mutagen
             text = text.encode(encoding) + term
             data << text + [time].pack('I>')
           end
-          data.join
+          data.join.b
         end
 
         def validate(frame, value)
@@ -497,7 +501,7 @@ module Mutagen
         end
 
         def write(frame, value)
-          value.map { |event| event.pack('cI!>') }.join
+          value.map { |event| event.pack('cI!>') }.join.b
         end
 
         def validate(frame, value)

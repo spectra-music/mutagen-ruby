@@ -107,7 +107,11 @@ module Mutagen
         end
 
         def ==(other)
-          repr == other.repr
+          if other.is_a? Frame
+            repr == other.repr
+          else
+            to_s == other.to_s
+          end
         end
 
         def read_data(data)
@@ -116,7 +120,7 @@ module Mutagen
             raise ID3JunkFrameError if data.empty?
             begin
               value, data = reader.read(self, data)
-            # rescue
+            # rescue EncodingError
             #   raise ID3JunkFrameError
             end
             instance_variable_set("@#{reader.name}", value)
@@ -130,7 +134,7 @@ module Mutagen
         def write_data
           data = []
           self.class::FRAMESPEC.each do |writer|
-            data << writer.write(self, instance_variable_get('@'+writer.name))
+            data << writer.write(self, instance_variable_get('@'+writer.name)).force_encoding('ASCII-8BIT')
           end
           data.join
         end
@@ -268,7 +272,7 @@ module Mutagen
             break unless instance_variable_defined? '@'+writer.name
             data << writer.write(self, instance_variable_get("@#{writer.name}"))
           end
-          data.join
+          data.join.b
         end
 
 
@@ -1043,8 +1047,8 @@ module Mutagen
       class EQU2 < ParentFrames::Frame
         FRAMESPEC = [
             Specs::ByteSpec.new('method'),
-            Specs::Latin1TextSpec.new('des'),
-            Specs::VolumeAdjustmentSpec.new('adjustments')
+            Specs::Latin1TextSpec.new('desc'),
+            Specs::VolumeAdjustmentsSpec.new('adjustments')
         ]
 
         def ==(other)
@@ -1052,7 +1056,7 @@ module Mutagen
         end
 
         def hash_key
-          "#{frame_id}:#{desc}"
+          "#{frame_id}:#{@desc}"
         end
       end
 
@@ -1105,6 +1109,10 @@ module Mutagen
 
         def _pprint
           "#{desc} (#{mime}, #{data.bytesize} bytes)"
+        end
+
+        def to_s
+          @data
         end
       end
 
