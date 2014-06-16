@@ -460,7 +460,7 @@ class TestWriteID3v1 < MiniTest::Test
   SILENCE = File.expand_path('../data/silence-44-s.mp3', __FILE__)
 
   def setup
-    @temp = Tempfile.new(['silence', '.mp3'], encoding: 'ISO-8859-1')
+    @temp = Tempfile.new(['silence', '.mp3'])
     IO.write(@temp.path, IO.read(SILENCE))
     @audio = Mutagen::ID3::ID3Data.new @temp.path
   end
@@ -959,4 +959,36 @@ class UpdateTo24 < MiniTest::Test
     id3.update_to_v24
     assert_empty id3.get_all('TIME')
   end
+end
+
+class Issue97_UpgradeUnknown23 < MiniTest::Test
+  SILENCE = path = File.expand_path('../data/97-unknown-23-update.mp3', __FILE__)
+
+  def setup
+    @temp = Tempfile.new(['silence', '.mp3'])
+    IO.write(@temp.path, IO.read(SILENCE))
+  end
+
+  def teardown
+    @temp.unlink
+    @temp.close
+  end
+
+  # def test_unknown
+  #   tpe1 = Mutagen::ID3::Frames::TPE1
+  #   orig = Mutagen::ID3::ID3Data.new @temp.path
+  #   assert_equal Mutagen::ID3::ID3Data::V23, orig.version
+  #
+  #   m = Module.new do
+  #     def self.const_get(const)
+  #       return Mutagen::ID3::Frames::TPE1 if const == :TPE1
+  #     end
+  #   end
+  #   # load a 2.3 file and pretend we don't support TIT2
+  #   unknown = Mutagen::ID3::ID3Data.new(@temp.path, known_frames:m, translate:false)
+  #
+  #   # TIT2 ends up in unknown_frames
+  #   assert_equal 'TIT2', unknown.unknown_frames.first[0...4]
+  # end
+
 end
