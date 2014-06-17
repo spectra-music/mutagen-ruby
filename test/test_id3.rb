@@ -974,21 +974,178 @@ class Issue97_UpgradeUnknown23 < MiniTest::Test
     @temp.close
   end
 
-  # def test_unknown
-  #   tpe1 = Mutagen::ID3::Frames::TPE1
-  #   orig = Mutagen::ID3::ID3Data.new @temp.path
-  #   assert_equal Mutagen::ID3::ID3Data::V23, orig.version
-  #
-  #   m = Module.new do
-  #     def self.const_get(const)
-  #       return Mutagen::ID3::Frames::TPE1 if const == :TPE1
-  #     end
-  #   end
-  #   # load a 2.3 file and pretend we don't support TIT2
-  #   unknown = Mutagen::ID3::ID3Data.new(@temp.path, known_frames:m, translate:false)
-  #
-  #   # TIT2 ends up in unknown_frames
-  #   assert_equal 'TIT2', unknown.unknown_frames.first[0...4]
-  # end
+  def test_unknown
+    tpe1 = Mutagen::ID3::Frames::TPE1
+    orig = Mutagen::ID3::ID3Data.new @temp.path
+    assert_equal Mutagen::ID3::ID3Data::V23, orig.version
 
+    m = Module.new do
+      def self.const_get(const)
+        if const == :TPE1
+          return Mutagen::ID3::Frames::TPE1
+        else
+          raise NameError
+        end
+      end
+    end
+    # load a 2.3 file and pretend we don't support TIT2
+    unknown = Mutagen::ID3::ID3Data.new(@temp.path, known_frames:m, translate:false)
+
+    # TIT2 ends up in unknown_frames
+    assert_equal 'TIT2', unknown.unknown_frames.first[0...4]
+
+    # frame should be different now
+    orig_unknown = unknown.unknown_frames[0]
+    unknown.update_to_v24
+    refute_equal orig_unknown, unknown.unknown_frames[0]
+
+    # save as 2.4
+    unknown.save
+
+    # load again with support for TIT2, all should be there again
+    new = Mutagen::ID3::ID3Data.new(@temp.path)
+    assert_equal Mutagen::ID3::ID3Data::V24, new.version
+    assert_equal orig['TIT2'].text, new['TIT2'].text
+    assert_equal orig['TPE1'].text, new['TPE1'].text
+  end
+
+
+  def test_double_update
+    m = Module.new do
+      def self.const_get(const)
+        if const == :TPE1
+          return Mutagen::ID3::Frames::TPE1
+        else
+          raise NameError
+        end
+      end
+    end
+    # load a 2.3 file and pretend we don't support TIT2
+    unknown = Mutagen::ID3::ID3Data.new(@temp.path, known_frames:m)
+    # Make sure the data doesn't get updated again
+    unknown.update_to_v24
+    unknown.instance_variable_set(:@unknown_frames, ['foobar'])
+    unknown.update_to_v24
+    refute_nil unknown.unknown_frames
+  end
+
+  def test_unknown_invalid
+    f = Mutagen::ID3::ID3Data.new(@temp.path, translate:false)
+    f.instance_variable_set(:@unknown_frames, ['foobar', "\xff".b*50])
+    # throw away invalid frames
+    f.update_to_v24
+    assert_empty f.unknown_frames
+  end
+end
+
+class BrokenDiscarded < MiniTest::Test
+  def test_empty
+    assert_raises(ID3JunkFrameError) { Mutagen::ID3::Frames::TPE1.from_data(ID3_24, 0x00, '')}
+  end
+
+  def test_wacky_truncated_RVA2
+    data = "\x01{\xf0\x10\xff\xff\x00".b
+    assert_raises(ID3JunkFrameError) { Mutagen::ID3::Frames::RVA2.from_data(ID3_24, 0x00, data)}
+  end
+
+  def test_bad_number_of_bits_RVA2
+    data = "\x00\x00\x01\xe6\xfc\x10{\xd7".b
+    assert_raises(ID3JunkFrameError) { Mutagen::ID3::Frames::RVA2.from_data(ID3_24, 0x00, data)}
+  end
+
+  def test_drops_truncated_frames
+    id3 = Mutagen::ID3::ID3Data.new
+    tail = "\x00\x00\x00\x03\x00\x00\x43\x57\x66".b
+    %W(RVA2 TXXX APIC).each do |head|
+      data = head + tail
+      assert_equal 0, id3.read_frames(data,Frames).to_a.size
+    end
+  end
+
+  def test_drops_nonalphanum_frames
+    id3 = Mutagen::ID3::ID3Data.new
+    tail = "\x00\x00\x00\x03\x00\x00\x43\x57\x66".b
+    ['\x06\xaf\xfe\x20', 'ABC\x00', 'A   '].each do |head|
+      data = head + tail
+      assert_equal 0, id3.read_frames(data,Frames).to_a.size
+    end
+  end
+
+  def test_bad_unicode_decode
+    data = "\x01\x00\x00\x00\xff\xfe\x00\xff\xfeh\x00".force_encoding('utf-8')
+    assert_raises(ID3JunkFrameError) { Mutagen::ID3::Frames::COMM.from_data(ID3_24, 0x00, data)}
+  end
+end
+
+class BrokenButParsed < MiniTest::Test
+  def test_missing_encoding
+    tag = Mutagen::ID3::Frames::TIT2.from_data(ID3_23, 0x00, 'a test')
+    assert_equal(0, tag.encoding)
+    assert_equal 'a test', tag.to_s
+    assert_equal ['a test'], tag.to_a
+    assert_equal ['a test'], tag.text
+  end
+
+  def test_zerolength_framedata
+    id3 = Mutagen::ID3::ID3Data.new
+    tail = "\x00" * 6
+    %w(WOAR TENC TCOP TOPE WXXX).each do |head|
+      data = head + tail
+      assert_equal 0, id3.read_frames(data, Frames).to_a.size
+    end
+  end
+
+  def test_lengthone_utf16
+    tpe1 = Mutagen::ID3::Frames::TPE1.from_data(ID3_24, 0, "\x01\00")
+    assert_equal '', tpe1.to_s
+    tpe1 = Mutagen::ID3::Frames::TPE1.from_data(ID3_24, 0, "\x01\00\x00\x00\x00")
+    assert_equal ['',''], tpe1.to_a
+  end
+
+  def test_fake_zlib_pedantic
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.pedantic = true
+    assert_raises(ID3BadCompressedData) { Mutagen::ID3::Frames::TPE1.from_data(id3, ParentFrames::Frame::FLAG24_COMPRESS, "\x03abcdefg") }
+  end
+
+  def test_zlib_bpi
+    id3 = Mutagen::ID3::ID3Data.new
+    tpe1 = Mutagen::ID3::Frames::TPE1.new encoding:0, text:('a'*(0xFFFF - 2))
+    data = id3.save_frame(tpe1)
+    datalen_size = data[4+4+2...4+4+2+4].each_char
+    refute datalen_size.max >= "\x80", "data is not syncsafe: #{data}"
+  end
+
+  def test_fake_zlib_nopedantic
+    id3 = Mutagen::ID3::ID3Data.new
+    id3.pedantic = false
+    tpe1 = Mutagen::ID3::Frames::TPE1.from_data(id3, ParentFrames::Frame::FLAG24_COMPRESS, "\x03abcdefg")
+    assert_equal 'abcdefg', tpe1.to_s
+  end
+
+  def test_ql_0_12_missing_uncompressed_size
+    tag = Mutagen::ID3::Frames::TPE1.from_data(ID3_24, 0x08, "x\x9cc\xfc\xff\xaf\x84!\x83!\x93\xa1\x98A\x01J&2\xe83\x940\xa4\x02\xd9%\x0c\x00\x87\xc6\x07#")
+    assert_equal 1, tag.encoding
+    assert_equal ['this is a/test'], tag.to_a
+  end
+
+  def test_zlib_latin1_missing_datalen
+    tag = Mutagen::ID3::Frames::TPE1.from_data(ID3_24, 0x08, "\x00\x00\x00\x0fx\x9cc(\xc9\xc8,V\x00\xa2D\xfd\x92\xd4\xe2\x12\x00&\x7f\x05%")
+    assert_equal 0, tag.encoding
+    assert_equal ['this is a/test'], tag.to_a
+  end
+
+  def test_detect_23_ints_in_24_frames
+    head = "TIT1\x00\x00\x01\x00\x00\x00\x00"
+    tail = "TPE1\x00\x00\x00\x04\x00\x00Yay!"
+
+    tagsgood = ID3_24.read_frames((head +'a' * 127 + tail), Frames).to_a
+    tagsbad = ID3_24.read_frames((head + 'a' * 255 + tail), Frames).to_a
+    assert_equal 2, tagsgood.size
+    assert_equal 2, tagsbad.size
+    assert_equal 'a'*127, tagsgood[0].to_s
+    assert_equal 'a'*255, tagsbad[0].to_s
+    assert_equal 'Yay!', tagsgood[1].to_s
+    assert_equal 'Yay!', tagsbad[1].to_s
+  end
 end

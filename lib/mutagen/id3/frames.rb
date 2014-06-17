@@ -120,8 +120,8 @@ module Mutagen
             raise ID3JunkFrameError if data.empty?
             begin
               value, data = reader.read(self, data)
-            # rescue EncodingError
-            #   raise ID3JunkFrameError
+            rescue EncodingError
+              raise ID3JunkFrameError
             end
             instance_variable_set("@#{reader.name}", value)
           end
@@ -177,7 +177,7 @@ module Mutagen
               begin
                 data = Unsynch.decode data
               rescue Mutagen::ValueError => err
-                raise ID3BadUnsynchData, "#{err}:#{data}" if ID3::ID3Data::PEDANTIC
+                raise ID3BadUnsynchData, "#{err}:#{data}" if id3.pedantic
               end
             end
             raise ID3EncryptionUnsupportedError if tflags & Frame::FLAG24_ENCRYPT != 0
@@ -191,7 +191,7 @@ module Mutagen
                 begin
                   data = Zlib::inflate(data)
                 rescue Zlib::Error => err
-                  raise ID3BadCompressedData, "#{err}: #{data}" if ID3::ID3Data::PEDANTIC
+                  raise ID3BadCompressedData, "#{err}: #{data}" if id3.pedantic
                 end
               end
             end

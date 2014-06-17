@@ -10,18 +10,19 @@ module Mutagen
     class ID3Data < Mutagen::Metadata
       include Mutagen::DictProxy
 
-      PEDANTIC = true
       V24      = Gem::Version.new '2.4.0'
       V23      = Gem::Version.new '2.3.0'
       V22      = Gem::Version.new '2.2.0'
       V11      = Gem::Version.new '1.1'
 
-      attr_reader :version, :size
+      attr_reader :version, :size, :unknown_frames
+      attr_accessor :pedantic
 
       def initialize(*args, ** kwargs)
         @version = V24
         @filename, @crc, @unknown_version = nil
         @size, @flags, @readbytes         = 0, 0, 0
+        @pedantic = true
 
         @dict           = {} # Need this for our DictProxy
         @unknown_frames = []
@@ -96,6 +97,7 @@ module Mutagen
               @unknown_frames << frame
             end
           end
+          @unknown_version = @version
         ensure
           @fileobj.close
           @fileobj  = nil
@@ -192,7 +194,7 @@ module Mutagen
         raise ID3NoHeaderError, "#{@filename} doesn't start with an ID3 tag" unless id3 == "ID3"
         raise ID3UnsupportedVersionError, "#{@filename} ID3v2.#{vmaj} not supported" unless [2, 3, 4].include? vmaj
 
-        if PEDANTIC
+        if pedantic
           raise Mutagen::ValueError, "Header size not synchsafe" unless BitPaddedInteger.has_valid_padding(size)
           if V24 <= @version and (flags & 0x0f > 0)
             raise Mutagen::ValueError, ("#{@filename} has invalid flags %#02x" % [flags])
@@ -220,7 +222,7 @@ module Mutagen
             # "Where the 'Extended header size' is the size of the whole
             # extended header, stored as a 32 bit synchsafe integer."
             @extsize = BitPaddedInteger.new(extsize).to_i - 4
-            if PEDANTIC
+            if pedantic
               unless BitPaddedInteger.has_valid_padding(extsize)
                 raise Mutagen::ValueError, 'Extended header size not synchsafe'
               end
@@ -298,6 +300,8 @@ module Mutagen
       end
 
       def read_frames(data, frames)
+        return enum_for(:read_frames, data, frames) unless block_given?
+
         if @version < V24 and f_unsynch != 0
           begin
             data = Unsynch.decode(data)
@@ -308,7 +312,7 @@ module Mutagen
 
         if V23 <= @version
           bpi = determine_bpi(data, frames)
-          until data.empty?
+          until data.nil? or data.empty?
             header = data[0...10]
             vals = header.unpack('a4L>S>')
             # not enough header
@@ -546,7 +550,7 @@ module Mutagen
 
       def save_frame(frame, name:nil, version:V24, v23_sep:nil)
         flags = 0
-        if PEDANTIC and frame.is_a? TextFrame
+        if pedantic and frame.is_a? TextFrame
           return '' if frame.to_s.empty?
         end
 
@@ -612,14 +616,20 @@ module Mutagen
           # convert unknown 2.3 frames (flags/size) to 2.4
           converted = []
           @unknown_frames.each do |frame|
-            if (val = frame[0...10]).include? nil
+            if (val = frame[0...10].unpack('a4L>S>')).include? nil
               next
             else
               name, size, flags = val
-              frame             = ParentFrames::BinaryFrame.from_data(self, flags, frame[10..-1])
+              begin
+                frame             = ParentFrames::BinaryFrame.from_data(self, flags, frame[10..-1])
+              rescue ValueError, NotImplementedError
+                next
+              end
             end
             converted << save_frame(frame, name:name)
           end
+          @unknown_frames = converted
+          @unknown_version = Mutagen::ID3::ID3Data::V24
         end
 
         # TDAT, TYER, and TIME have been turned into TDRC
