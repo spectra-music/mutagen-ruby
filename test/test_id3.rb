@@ -1147,5 +1147,181 @@ class BrokenButParsed < MiniTest::Test
     assert_equal 'a'*255, tagsbad[0].to_s
     assert_equal 'Yay!', tagsgood[1].to_s
     assert_equal 'Yay!', tagsbad[1].to_s
+
+    tagsgood = ID3_24.read_frames((head +'a' * 127), Frames).to_a
+    tagsbad = ID3_24.read_frames((head + 'a' * 255), Frames).to_a
+    assert_equal 1, tagsgood.size
+    assert_equal 1, tagsbad.size
+    assert_equal 'a'*127, tagsgood[0].to_s
+    assert_equal 'a'*255, tagsbad[0].to_s
   end
+end
+
+class OddWrites
+  SILENCE = File.expand_path('../data/silence-44-s.mp3', __FILE__)
+  NEWSILENCE = File.expand_path('../data/silence-written.mp3', __FILE__)
+
+  def setup
+    IO.write(NEWSILENCE, IO.read(SILENCE))
+  end
+
+  def teardown
+    File.unlink NEWSILENCE
+  end
+
+  def test_to_empty_file
+    File.unlink NEWSILENCE
+    File.open(NEWSILENCE, 'wb').close
+    Mutagen::ID3::ID3Data(SILENCE).save(NEWSILENCE)
+  end
+
+  def test_to_non_file
+    File.unlink NEWSILENCE
+    Mutagen::ID3::ID3Data(SILENCE).save(NEWSILENCE)
+  end
+
+  def test_1bfile
+    File.unlink NEWSILENCE
+    File.open(NEWSILENCE, 'wb') {|f| f.write '!' }
+    Mutagen::ID3::ID3Data(SILENCE).save(NEWSILENCE)
+    assert_greater_than 1, File.size(NEWSILENCE)
+    assert_equal File.open(NEWSILENCE).read[-1], '!'
+  end
+end
+
+class WriteRoundTrip < MiniTest::Test
+  SILENCE = File.expand_path('../data/silence-44-s.mp3', __FILE__)
+  NEWSILENCE = File.expand_path('../data/silence-written.mp3', __FILE__)
+
+  def setup
+    IO.write(NEWSILENCE, IO.read(SILENCE))
+  end
+
+  def teardown
+    begin
+      File.unlink(NEWSILENCE)
+    rescue SystemCallError
+      # Sometimes there is no file
+    end
+  end
+
+  def test_same
+    Mutagen::ID3::ID3Data.new(NEWSILENCE).save
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    assert_equal 'Quod Libet Test Data', id3['TALB'].to_s
+    assert_equal 'Silence', id3['TCON'].to_s
+    assert_equal 'Silence', id3['TIT2'].to_s
+    assert_equal 'jzig', id3['TPE1'].to_s
+  end
+
+  def test_same_v23
+    Mutagen::ID3::ID3Data.new(NEWSILENCE, v2_version:3).save(v2_version:3)
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    assert_equal Mutagen::ID3::ID3Data::V23, id3.version
+    assert_equal 'Quod Libet Test Data', id3['TALB'].to_s
+    assert_equal 'Silence', id3['TCON'].to_s
+    assert_equal 'Silence', id3['TIT2'].to_s
+    assert_equal 'jzig', id3['TPE1'].to_s
+  end
+
+  def test_add_frame
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    refute_includes id3, 'TIT3'
+    id3['TIT3'] = Mutagen::ID3::Frames::TIT3.new encoding:0, text:'A subtitle!'
+    id3.save
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    assert_equal 'A subtitle!', id3['TIT3'].to_s
+  end
+
+  def test_change_frame
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    assert_equal 'Silence', id3['TIT2'].to_s
+    id3['TIT2'].text = ['The sound of silence.']
+    id3.save
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    assert_equal 'The sound of silence.', id3['TIT2'].to_s
+  end
+
+  def test_replace_frame
+    Mutagen::ID3::ID3Data.new(NEWSILENCE) do |id3|
+      assert_equal 'jzig', id3['TPE1'].to_s
+      id3['TPE1'] = Mutagen::ID3::Frames::TPE1.new encoding:0, text:"jzig\x00piman"
+    end
+
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    assert_equal ['jzig', 'piman'], id3['TPE1'].to_a
+  end
+
+  def test_compressibly_large
+    Mutagen::ID3::ID3Data.new(NEWSILENCE) do |id3|
+      refute_includes id3, 'TPE2'
+      id3['TPE2'] = Mutagen::ID3::Frames::TPE2.new encoding:0, text:'Ab'*1025
+    end
+    id3 = Mutagen::ID3::ID3Data.new(NEWSILENCE)
+    assert_equal 'Ab'*1025, id3['TPE2'].to_s
+  end
+
+  def test_no_file_empty_tag
+    File.unlink NEWSILENCE
+    Mutagen::ID3::ID3Data.new.save NEWSILENCE
+    assert_raises(Errno::ENOENT) { File.open(NEWSILENCE) }
+  end
+
+  def test_no_file_silence_tag
+    id3 = Mutagen::ID3::ID3Data.new NEWSILENCE
+    File.unlink NEWSILENCE
+    id3.save NEWSILENCE
+    assert_equal 'ID3', File.open(NEWSILENCE).read(3)
+    test_same
+  end
+
+  def test_empty_file_silence_tag
+    id3 = Mutagen::ID3::ID3Data.new NEWSILENCE
+    File.open(NEWSILENCE, 'wb') { |f| f.truncate f.pos }
+    id3.save NEWSILENCE
+    assert_equal 'ID3', File.open(NEWSILENCE).read(3)
+    test_same
+  end
+
+  def test_empty_plustag_minustag_empty
+    id3 = Mutagen::ID3::ID3Data.new NEWSILENCE
+    File.open(NEWSILENCE, 'wb') { |f| f.truncate f.pos }
+    id3.save
+    id3.delete_tags
+    assert id3.empty?
+    assert_nil File.open(NEWSILENCE).read(10)
+  end
+
+
+  def empty_plustag_emptytag_empty
+    id3 = Mutagen::ID3::ID3Data.new NEWSILENCE
+    File.open(NEWSILENCE, 'wb') { |f| f.truncate f.pos }
+    id3.save
+    id3.clear
+    id3.save
+    assert_nil File.open(NEWSILENCE).read(10)
+  end
+
+  def test_delete_invalid_zero
+    File.open(NEWSILENCE, 'wb') { |f| f.write "ID3\x04\x00\x00\x00\x00\x00\x00abc" }
+    Mutagen::ID3::ID3Data.new(NEWSILENCE).delete_tags
+    assert_equal 'abc', File.open(NEWSILENCE).read(10)
+  end
+
+  def test_frame_order
+    id3 = Mutagen::ID3::ID3Data.new NEWSILENCE
+    id3['TIT2'] = Mutagen::ID3::Frames::TIT2.new encoding:0, text:'A title!'
+    id3['APIC'] = Mutagen::ID3::Frames::APIC.new encoding:0, mime:'b', type:3, desc:'', data:'a'
+    id3['TALB'] = Mutagen::ID3::Frames::TALB.new encoding:0, text:'c'
+    id3['COMM'] = Mutagen::ID3::Frames::COMM.new encoding:0, desc:'x', text:'y'
+    id3.save
+    File.open(NEWSILENCE, 'rb').read do |f|
+      assert_less_than f.find_index('TIT2'), f.find_index('APIC')
+      assert_less_than f.find_index('TIT2'), f.find_index('COMM')
+      assert_less_than f.find_index('TALB'), f.find_index('APIC')
+      assert_less_than f.find_index('TALB'), f.find_index('COMM')
+      assert_less_than f.find_index('TIT2'), f.find_index('TALB')
+    end
+  end
+
 end

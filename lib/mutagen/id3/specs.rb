@@ -268,7 +268,7 @@ module Mutagen
 
           value = value.map { |v| spec._validate23(frame, v, ** kwargs) }
           if kwargs.has_key? :sep
-            return [spec.validate(frame, kwargs[:sep].join(value))]
+            return [spec.validate(frame, value.join(kwargs[:sep]))]
           end
           value
         end

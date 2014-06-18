@@ -53,12 +53,12 @@ module Mutagen
               #  raise "#{checker.name}: No instance variable for checker on #{other}"
               #end
               instance_variable_set("@#{checker.name}", val)
-              self.class.send('attr_reader', checker.name.to_sym)
+              self.class.send(:attr_accessor, checker.name.to_sym)
             end
           else
             self.class::FRAMESPEC[0...args.size].zip(args) do |checker, val|
               instance_variable_set("@#{checker.name}", checker.validate(self, val))
-              self.class.send('attr_reader', checker.name.to_sym)
+              self.class.send(:attr_accessor, checker.name.to_sym)
             end
             self.class::FRAMESPEC[args.size..-1].each do |checker|
               begin
@@ -68,7 +68,7 @@ module Mutagen
                 raise e.exception("#{checker.name}: #{e.message}")
               end
               instance_variable_set("@#{checker.name}", validated)
-              self.class.send("attr_reader", checker.name.to_sym)
+              self.class.send(:attr_accessor, checker.name.to_sym)
             end
           end
         end
@@ -76,12 +76,12 @@ module Mutagen
         # Returns a frame copy which is suitable for writing into a v2.3 tag
         #
         # kwargs get passed to the specs
-        def _get_v23_frame(** kwargs)
+        def get_v23_frame(** kwargs)
           new_kwargs = {}
           self.class::FRAMESPEC.each do |checker|
             name             = checker.name
             value            = instance_variable_get("@#{name}")
-            new_kwargs[name] = checker._validate23(value, ** kwargs)
+            new_kwargs[name.to_sym] = checker._validate23(self, value, ** kwargs)
           end
           self.class.new(** new_kwargs)
         end
@@ -125,9 +125,11 @@ module Mutagen
             end
             instance_variable_set("@#{reader.name}", value)
           end
-          leftover = Mutagen.strip_arbitrary(data, "\x00") unless data.nil?
-          unless leftover.nil? or leftover.empty?
-            warn "Leftover data: #{self.class}: #{data} (from #{odata})"
+          unless data.nil?
+            leftover = Mutagen.strip_arbitrary(data, "\x00")
+            unless leftover.nil? or leftover.empty?
+              warn "Leftover data: #{self.class}: #{data} (from #{odata})"
+            end
           end
         end
 
@@ -232,7 +234,7 @@ module Mutagen
             if kwargs.has_key? spec.name.to_sym
               validated = spec.validate(self, kwargs[spec.name.to_sym])
               instance_variable_set("@#{spec.name}", validated)
-              self.class.send('attr_reader', spec.name.to_sym)
+              self.class.send(:attr_accessor, spec.name.to_sym)
             else
               break
             end
@@ -253,7 +255,7 @@ module Mutagen
               break if data.empty?
               value, data = reader.read(self, data)
               instance_variable_set("@#{reader.name}", value)
-              self.class.send('attr_reader', reader.name.to_sym) unless self.respond_to? reader.name.to_sym
+              self.class.send(:attr_accessor, reader.name.to_sym) unless self.respond_to? reader.name.to_sym
             end
           end
           leftover = Mutagen.strip_arbitrary(data, "\x00") unless data.nil?

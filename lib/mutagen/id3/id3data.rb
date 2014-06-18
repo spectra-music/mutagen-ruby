@@ -1,12 +1,6 @@
 module Mutagen
   module ID3
     # A file with an ID3v2 tag.
-    #
-    # Attributes:
-    #
-    # * version -- ID3 tag version as a tuple
-    # * unknown_frames -- raw frame data of any unknown frames found
-    # * size -- the total size of the ID3 tag, including the header
     class ID3Data < Mutagen::Metadata
       include Mutagen::DictProxy
 
@@ -15,7 +9,16 @@ module Mutagen
       V22      = Gem::Version.new '2.2.0'
       V11      = Gem::Version.new '1.1'
 
-      attr_reader :version, :size, :unknown_frames
+      # @return [Gem::Version] the ID3 tag version
+      attr_reader :version
+
+      # @return [Fixnum] the total size of the ID3 tag, including the header
+      attr_reader :size
+
+      # @return [Hash] raw frame data of any unknown frames found
+      attr_reader :unknown_frames
+
+      # @return [Bool] turn verbose reporting on or off
       attr_accessor :pedantic
 
       def initialize(*args, ** kwargs)
@@ -27,6 +30,10 @@ module Mutagen
         @dict           = {} # Need this for our DictProxy
         @unknown_frames = []
         super(*args, ** kwargs)
+        if block_given?
+          yield self
+          self.save
+        end
       end
 
       def fullread(size)
@@ -464,7 +471,7 @@ module Mutagen
       #            will be the ID3v2v2.4 null separator.
       #
       # The lack of a way to update only an ID3v1 tag is intentional.
-      def save(filename:nil, v1:1, v2_version:4, v23_sep:'/')
+      def save(filename=@filename, v1:1, v2_version:4, v23_sep:'/')
         framedata = prepare_framedata(v2_version, v23_sep)
         framesize = framedata.bytesize
 
@@ -479,18 +486,17 @@ module Mutagen
           return nil
         end
 
-        filename = @filename if filename.nil? or filename.empty?
+        filename= filename.empty? ? @filename : filename
         begin
           f = File.open(filename, 'rb+')
         rescue SystemCallError => err
-          raise err unless err.is_a? Errno.ENOENT
+          raise err unless err.is_a? Errno::ENOENT
           File.open(filename, 'ab').close
           f= File.open(filename, 'rb+')
         end
 
         begin
-          f.rewind  # Go to the beginning
-          idata = f.read 10
+          idata = f.read(10) || ''
 
           header = prepare_id3_header(idata, framesize, v2_version)
           header, outsize, insize = header
@@ -541,11 +547,10 @@ module Mutagen
       #
       # * delete_v1 -- delete any ID3v1 tag
       # * delete_v2 -- delete any ID3v2 tag
-      def delete_tags(filename:nil, delete_v1:true, delete_v2:true)
-        if filename.nil? or filename.empty?
-          filename = @filename
-        end
-        ID3::delete(filename, delete_v1, delete_v2)
+      def delete_tags(filename=@filename, delete_v1:true, delete_v2:true)
+        filename = filename.empty? ? @filename : filename
+        ID3Data::delete(filename, delete_v1:delete_v1, delete_v2:delete_v2)
+        self.clear
       end
 
       def save_frame(frame, name:nil, version:V24, v23_sep:nil)
@@ -745,19 +750,18 @@ module Mutagen
       #
       # * delete_v1 -- delete any ID3v1 tag
       # * delete_v2 -- delete any ID3v2 tag
-      def self.delete(filename:nil, delete_v1:true, delete_v2:true)
-        File.open(filename) do |f|
+      def self.delete(filename=nil, delete_v1:true, delete_v2:true)
+        File.open(filename, 'rb+') do |f|
           if delete_v1
-            flag = true
             begin
               f.seek -128, IO::SEEK_END
-            rescue IOError
-              flag = false
+            rescue IOError, SystemCallError
               # ignore
-            end
-            if flag and f.read(3) == 'TAG'
-              f.seek -128, IO::SEEK_END
-              f.truncate f.pos
+            else
+              if f.read(3) == 'TAG'
+                f.seek -128, IO::SEEK_END
+                f.truncate f.pos
+              end
             end
           end
 
@@ -767,7 +771,7 @@ module Mutagen
             f.rewind
             idata = f.read 10
             begin
-              val = idata.unpack('a3C4a4')
+              val = idata.unpack('a3C3a4')
               if val.include? nil or
                   val.first.bytesize != 3 or
                   val.last.bytesize != 4
@@ -777,7 +781,7 @@ module Mutagen
               end
               insize = BitPaddedInteger.new insize
               if id3 == 'ID3' and insize >= 0
-                Mutagen::delete_bytes(f, insize + 10, 0)
+                Mutagen::delete_bytes(f, insize.to_i + 10, 0)
               end
             end
           end
