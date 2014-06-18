@@ -1325,3 +1325,229 @@ class WriteRoundTrip < MiniTest::Test
   end
 
 end
+
+class BadTYER < MiniTest::Test
+  FILENAME = File.expand_path('../data/bad-TYER-frame.mp3', __FILE__)
+  def setup
+    @audio = Mutagen::ID3::ID3Data.new FILENAME
+  end
+
+  def teardown
+    @audio = nil
+  end
+
+  def test_no_year
+    refute_includes @audio, 'TYER'
+  end
+
+  def test_has_title
+    assert_includes @audio, 'TIT2'
+  end
+end
+
+class BadPOPM < MiniTest::Test
+  FILENAME = File.expand_path('../data/bad-POPM-frame.mp3', __FILE__)
+  NEWFILENAME = File.expand_path('../data/bad-POPM-frame-written.mp3b', __FILE__)
+
+  def setup
+    FileUtils.cp FILENAME, NEWFILENAME
+  end
+  def teardown
+    begin
+      File.unlink NEWFILENAME
+    rescue SystemCallError
+      # ignore
+    end
+  end
+
+  def test_read_popm_long_counter
+    f = Mutagen::ID3::ID3Data.new NEWFILENAME
+    assert_includes f, 'POPM:Windows Media Player 9 Series'
+    popm = f['POPM:Windows Media Player 9 Series']
+    assert_equal 255, popm.rating
+    assert_equal 2709193061, popm.count
+  end
+
+  def test_write_popm_long_counter
+    f = Mutagen::ID3::ID3Data.new NEWFILENAME
+    f.add Frames::POPM.new(email:'foo@example.com', rating:125, count:2**32+1)
+    f.save
+    f = Mutagen::ID3::ID3Data.new NEWFILENAME
+    assert_includes f, 'POPM:foo@example.com'
+    assert_includes f, 'POPM:Windows Media Player 9 Series'
+    popm = f['POPM:foo@example.com']
+    assert_equal 125, popm.rating
+    assert_equal 2**32+1, popm.count
+  end
+end
+
+class Issue69_BadV1Year < MiniTest::Test
+  def test_missing_year
+    tag = Mutagen::ID3.parse_ID3v1 "ABCTAGhello world\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff"
+    assert_equal 'hello world', tag['TIT2'].to_s
+  end
+
+  def test_short_year
+    tag = Mutagen::ID3.parse_ID3v1 "XTAGhello world\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x001\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff"
+    assert_equal 'hello world', tag['TIT2'].to_s
+    assert_equal '0001', tag['TDRC'].to_s
+  end
+
+  def test_none
+    s = Mutagen::ID3.make_ID3v1({})
+    assert_equal 128, s.size
+    tag = Mutagen::ID3.parse_ID3v1(s)
+    refute_includes tag, 'TDRC'
+  end
+
+  def test_empty
+    s = Mutagen::ID3.make_ID3v1({'TDRC' => ''})
+    assert_equal 128, s.size
+    tag = Mutagen::ID3.parse_ID3v1(s)
+    refute_includes tag, 'TDRC'
+  end
+
+  def test_short
+    s = Mutagen::ID3.make_ID3v1({'TDRC' => '1'})
+    assert_equal 128, s.size
+    tag = Mutagen::ID3.parse_ID3v1(s)
+    assert_equal tag['TDRC'], '0001'
+  end
+
+  def test_long
+    s = Mutagen::ID3.make_ID3v1({'TDRC' => '123456789'})
+    assert_equal 128, s.size
+    tag = Mutagen::ID3.parse_ID3v1(s)
+    assert_equal tag['TDRC'], '1234'
+  end
+end
+
+class Updateto23 < MiniTest::Test
+  def test_tdrc
+    tags = Mutagen::ID3::ID3Data.new
+    tags.add Mutagen::ID3::Frames::TDRC.new(encoding:1, text:'2003-04-05 12:03')
+    tags.update_to_v23
+    assert_equal ['2003'], tags['TYER'].text
+    assert_equal ['0504'], tags['TDAT'].text
+    assert_equal ['1203'], tags['TIME'].text
+  end
+
+  def test_tdor
+    tags = Mutagen::ID3::ID3Data.new
+    tags.add Mutagen::ID3::Frames::TDOR.new(encoding:1, text:'2003-04-05 12:03')
+    tags.update_to_v23
+    assert_equal ['2003'], tags['TORY'].text
+  end
+
+  def test_genre_from_v24_1
+    tags = Mutagen::ID3::ID3Data.new
+    tags.add Mutagen::ID3::Frames::TCON.new(encoding:1, text: %w(4 Rock))
+    tags.update_to_v23
+    assert_equal %w(Disco Rock), tags['TCON'].text
+  end
+
+  def test_genre_from_v24_2
+    tags = Mutagen::ID3::ID3Data.new
+    tags.add Mutagen::ID3::Frames::TCON.new(encoding:1, text: %w(RX 3 CR))
+    tags.update_to_v23
+    assert_equal %w(Remix Dance Cover), tags['TCON'].text
+  end
+
+  def test_genre_from_v23_1
+    tags = Mutagen::ID3::ID3Data.new
+    tags.add Mutagen::ID3::Frames::TCON.new(encoding:1, text: ['(4)Rock'])
+    tags.update_to_v23
+    assert_equal %w(Disco Rock), tags['TCON'].text
+  end
+
+  def test_genre_from_v23_2
+    tags = Mutagen::ID3::ID3Data.new
+    tags.add Mutagen::ID3::Frames::TCON.new(encoding:1, text: ['(RX)(3)(CR)'])
+    tags.update_to_v23
+    assert_equal %w(Remix Dance Cover), tags['TCON'].text
+  end
+
+  def test_ipls
+    tags = Mutagen::ID3::ID3Data.new
+    tags.instance_variable_set(:@version, Mutagen::ID3::ID3Data::V24)
+    tags.add Frames::TIPL.new(encoding:0, people:[%w(a b), %w(c d)])
+    tags.add Frames::TMCL.new(encoding:0, people:[%w(e f), %w(g h)])
+    tags.update_to_v23
+    assert_equal [%w(a b), %w(c d), %w(e f), %w(g h)], tags['IPLS'].people
+  end
+end
+
+class WriteTo23 < MiniTest::Test
+  SILENCE = File.expand_path('../data/silence-44-s.mp3', __FILE__)
+
+  def setup
+    @temp = Tempfile.new(%w(silence .mp3))
+    @temp.close
+    IO.write(@temp.path, IO.read(SILENCE))
+    @audio = Mutagen::ID3::ID3Data.new @temp.path
+  end
+
+  def teardown
+    File.unlink @temp.path
+  end
+
+  def test_update_to_v23_on_load
+    @audio.add Frames::TSOT.new(text:%w(Ha), encoding:3)
+    @audio.save
+
+    # update_to_v23 called
+    id3 = Mutagen::ID3::ID3Data.new @temp.path, v2_version:3
+    assert_empty id3.get_all('TSOT')
+
+    # update_to_v23 not called
+    id3 = Mutagen::ID3::ID3Data.new @temp.path, v2_version:3, translate:false
+    refute_empty id3.get_all('TSOT')
+  end
+
+  def test_load_save_inval_version
+    assert_raises(ArgumentError) { @audio.save v2_version:5 }
+    assert_raises(ArgumentError) { @audio.save @temp.path, v2_version:5 }
+  end
+
+  def test_save
+    strings = %w(one two three)
+    @audio.add Frames::TPE1.new(text:strings, encoding:3)
+    @audio.save v2_version:3
+
+    frame = @audio['TPE1']
+    assert_equal 3, frame.encoding
+    assert_equal strings, frame.text
+
+    id3 = Mutagen::ID3::ID3Data.new @temp.path, translate:false
+    assert_equal Mutagen::ID3::ID3Data::V23, id3.version
+    frame = id3['TPE1']
+    assert_equal 1, frame.encoding
+    assert_equal [strings.join('/')], frame.text
+
+    # null separator, mutagen can still read it
+    @audio.save(v2_version:3, v23_sep:nil)
+
+    path = @temp.path
+    id3 = Mutagen::ID3::ID3Data.new path, translate:false
+    assert_equal Mutagen::ID3::ID3Data::V23, id3.version
+    frame = id3['TPE1']
+    assert_equal 1, frame.encoding
+    assert_equal strings, frame.text
+  end
+
+  def test_save_off_spec_frames
+    dates = %w(2013 2014)
+    frame = Frames::TDEN.new text:dates, encoding:3
+    @audio.add frame
+    tipl_frame = Frames::TIPL.new encoding:2, people: [%w(a b), %w(c d)]
+    @audio.add tipl_frame
+    @audio.save v2_version:3
+
+    id3 = Mutagen::ID3::ID3Data.new @temp.path, translate:false
+    assert_equal dates, id3['TDEN'].text.map {|s| s.text}
+    assert_equal 1, id3['TDEN'].encoding
+
+    assert_equal tipl_frame.people, id3['TIPL'].people
+    assert_equal 1, id3['TIPL'].encoding
+  end
+end

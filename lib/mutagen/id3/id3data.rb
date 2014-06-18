@@ -129,7 +129,7 @@ module Mutagen
       # ``getall('COMM:MusicMatch')`` or ``getall('TXXX:QuodLibet:')``.
       def get_all(key)
         if has_key? key
-          self[key]
+          [self[key]]
         else
           key += ':'
           each_pair.map { |s, v| v if s.start_with? key }.compact
@@ -518,7 +518,7 @@ module Mutagen
             f.seek 0, IO::SEEK_END
           end
           data = f.read 128
-          idx = data.index("TAG")
+          idx = data.index('TAG')
           if idx.nil?
             offset = 0
             has_v1 = false
@@ -561,9 +561,9 @@ module Mutagen
 
         if version == V23
           framev23 = frame.get_v23_frame(sep:v23_sep)
-          framedata = framev23.write_data
+          framedata = framev23.send(:write_data)
         else
-          framedata = frame.write_data
+          framedata = frame.send(:write_data)
         end
 
         # usize = framedata.size
@@ -702,8 +702,14 @@ module Mutagen
         # TMCL, TIPL -> TIPL
         if include?('TIPL') or include?('TMCL')
           people = []
-          people.push(*@dict.delete('TIPL').people) if include? 'TIPL'
-          people.push(*@dict.delete('TMCL').people) if include? 'TMCL'
+          if include? 'TIPL'
+            f = self.delete('TIPL')
+            people.push(*f.people)
+          end
+          if include? 'TMCL'
+            f = self.delete('TMCL')
+            people.push(*f.people)
+          end
           unless include? 'IPLS'
             add IPLS.new(encoding: f.encoding, people:people)
           end
@@ -714,8 +720,8 @@ module Mutagen
           f = @dict.delete 'TDOR'
           unless f.text.empty?
             d = f.text.first
-            unless d.year.nil? or d.year.empty? or include? "TORY"
-              add Frames::TORY.new(encoding:f.encoding, text: ("%04d" % [d.year]))
+            unless d.year.nil? or d.year.zero? or include? "TORY"
+              add Frames::TORY.new(encoding:f.encoding, text: ('%04d' % [d.year]))
             end
           end
         end
@@ -725,16 +731,16 @@ module Mutagen
           f = @dict.delete 'TDRC'
           unless f.text.nil? or f.text.empty?
             d = f.text.first
-            unless d.year.nil? or d.year.empty? or include? 'TYER'
-              add Frames::TYER.new(encoding:f.encoding, text: ("%04d" % [d.year]))
+            unless d.year.nil? or d.year.zero? or include? 'TYER'
+              add Frames::TYER.new(encoding:f.encoding, text: ('%04d' % [d.year]))
             end
-            unless d.day.nil? or d.day.empty? or
-                d.month.nil? or d.month.empty? or include? 'TDAT'
-              add Frames::TDAT.new(encoding:f.encoding, text: ("%02d%02d" % [d.day, d.month]))
+            unless d.day.nil? or d.day.zero? or
+                d.month.nil? or d.month.zero? or include? 'TDAT'
+              add Frames::TDAT.new(encoding:f.encoding, text: ('%02d%02d' % [d.day, d.month]))
             end
-            unless d.hour.nil? or d.minute.empty? or
-                d.month.nil? or d.month.empty? or include? 'TIME'
-              add Frames::TIME.new(encoding:f.encoding, text: ("%02d%02d" % [d.hour, d.minute]))
+            unless d.hour.nil? or d.minute.zero? or
+                d.month.nil? or d.month.zero? or include? 'TIME'
+              add Frames::TIME.new(encoding:f.encoding, text: ('%02d%02d' % [d.hour, d.minute]))
             end
           end
         end

@@ -45,7 +45,6 @@ module Mutagen
 
         def write(frame, value)
           BitPaddedInteger.to_str(value, bits: 8, width: -1)
-
         end
 
         def validate(frame, value)
@@ -267,7 +266,7 @@ module Mutagen
           end
 
           value = value.map { |v| spec._validate23(frame, v, ** kwargs) }
-          if kwargs.has_key? :sep
+          unless kwargs[:sep].nil?
             return [spec.validate(frame, value.join(kwargs[:sep]))]
           end
           value

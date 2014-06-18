@@ -543,7 +543,7 @@ module Mutagen
                   elsif gid == 'RX'
                     newgenres << 'Remix'
                   else
-                    newgenres << "Unknown"
+                    newgenres << 'Unknown'
                   end
                 end
               end
