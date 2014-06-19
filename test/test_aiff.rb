@@ -161,3 +161,102 @@ class TestAIFFInfo < MiniTest::Test
     assert_raises(Mutagen::AIFF::InvalidChunk) { Mutagen::AIFF::AIFFInfo.new fileobj}
   end
 end
+
+class TestIFFile < MiniTest::Test
+  HAS_TAGS  = File.expand_path('../data/with-id3.aif', __FILE__)
+  NO_TAGS   =  File.expand_path('../data/8k-1ch-1s-silence.aif', __FILE__)
+
+  def setup
+    @file_1 = File.open(HAS_TAGS, 'rb')
+    @iff_1 = Mutagen::AIFF::IFFFile.new @file_1
+    @file_2 = File.open(NO_TAGS, 'rb')
+    @iff_2 = Mutagen::AIFF::IFFFile.new @file_2
+
+
+    tmp_1 = Tempfile.new(%w(silence .aif))
+    tmp_1.close
+    FileUtils.cp HAS_TAGS, tmp_1.path
+    @file_1_tmp = File.open(tmp_1.path, 'rb+')
+    @iff_1_tmp = Mutagen::AIFF::IFFFile.new @file_1_tmp
+
+    tmp_2 = Tempfile.new(%w(silence .aif))
+    tmp_2.close
+    FileUtils.cp NO_TAGS,tmp_2.path
+    @file_2_tmp = File.open(tmp_2.path, 'rb+')
+    @iff_2_tmp = Mutagen::AIFF::IFFFile.new @file_2_tmp
+  end
+
+  def teardown
+    @file_1.close
+    @file_2.close
+    @file_1_tmp.close
+    @file_2_tmp.close
+    File.unlink @file_1_tmp.path
+    File.unlink @file_2_tmp.path
+  end
+
+  def test_has_chunks
+    assert_includes @iff_1, 'FORM'
+    assert_includes @iff_1, 'COMM'
+    assert_includes @iff_1, 'SSND'
+    assert_includes @iff_1, 'ID3'
+
+    assert_includes @iff_2, 'FORM'
+    assert_includes @iff_2, 'COMM'
+    assert_includes @iff_2, 'SSND'
+  end
+
+  def test_is_chunks
+    assert_instance_of Mutagen::AIFF::IFFChunk, @iff_1['FORM']
+    assert_instance_of Mutagen::AIFF::IFFChunk, @iff_1['COMM']
+    assert_instance_of Mutagen::AIFF::IFFChunk, @iff_1['SSND']
+    assert_instance_of Mutagen::AIFF::IFFChunk, @iff_1['ID3']
+  end
+
+  def test_chunk_size
+    assert_equal 17096, @iff_1['FORM'].size
+    assert_equal 16054, @iff_2['FORM'].size
+  end
+
+  def test_chunk_data_size
+    assert_equal 17088, @iff_1['FORM'].data_size
+    assert_equal 16046, @iff_2['FORM'].data_size
+  end
+
+  def test_FORM_chunk_resize
+    @iff_1_tmp['FORM'].resize 17000
+    assert_equal 17000, Mutagen::AIFF::IFFFile.new(@file_1_tmp)['FORM'].data_size
+    @iff_2_tmp['FORM'].resize 0
+    assert_equal 0, Mutagen::AIFF::IFFFile.new(@file_2_tmp)['FORM'].data_size
+  end
+
+  def test_child_chunk_resize
+    @iff_1_tmp['ID3'].resize 128
+    assert_equal 128, Mutagen::AIFF::IFFFile.new(@file_1_tmp)['ID3'].data_size
+    assert_equal 16182, Mutagen::AIFF::IFFFile.new(@file_1_tmp)['FORM'].data_size
+  end
+
+  def test_chunk_delete
+    @iff_1_tmp.delete 'ID3'
+    refute_includes @iff_1_tmp, 'ID3'
+    refute_includes Mutagen::AIFF::IFFFile.new(@file_1_tmp), 'ID3'
+    assert_equal 16054, Mutagen::AIFF::IFFFile.new(@file_1_tmp)['FORM'].size
+
+    @iff_2_tmp.delete 'SSND'
+    refute_includes @iff_2_tmp, 'SSND'
+    refute_includes Mutagen::AIFF::IFFFile.new(@file_2_tmp), 'SSND'
+    assert_equal 38, Mutagen::AIFF::IFFFile.new(@file_2_tmp)['FORM'].size
+  end
+
+  def test_insert_chunk
+    @iff_2_tmp.insert_chunk 'ID3'
+
+    new_iff = Mutagen::AIFF::IFFFile.new @file_2_tmp
+    assert_includes new_iff, 'ID3'
+    assert_instance_of Mutagen::AIFF::IFFChunk, new_iff['ID3']
+    assert_equal 16062, new_iff['FORM'].size
+    assert_equal 16054, new_iff['FORM'].data_size
+    assert_equal 8, new_iff['ID3'].size
+    assert_equal 0, new_iff['ID3'].data_size
+  end
+end
