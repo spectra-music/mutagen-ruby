@@ -46,7 +46,7 @@ module Mutagen
               #if other.instance_variable_defined?('@'+checker.name)
               begin
                 val = checker.validate(self, other.instance_variable_get("@#{checker.name}"))
-              rescue Mutagen::ValueError => e
+              rescue Mutagen::Util::ValueError => e
                 raise e.exception("#{checker.name}: #{e.message}")
               end
               #else
@@ -64,7 +64,7 @@ module Mutagen
               begin
                 #TODO: does checker.name.to_sym improve performance?
                 validated = checker.validate(self, kwargs[checker.name.to_sym])
-              rescue Mutagen::ValueError => e
+              rescue Mutagen::Util::ValueError => e
                 raise e.exception("#{checker.name}: #{e.message}")
               end
               instance_variable_set("@#{checker.name}", validated)
@@ -126,7 +126,7 @@ module Mutagen
             instance_variable_set("@#{reader.name}", value)
           end
           unless data.nil?
-            leftover = Mutagen.strip_arbitrary(data, "\x00")
+            leftover = Mutagen::Util::strip_arbitrary(data, "\x00")
             unless leftover.nil? or leftover.empty?
               warn "Leftover data: #{self.class}: #{data} (from #{odata})"
             end
@@ -178,7 +178,7 @@ module Mutagen
             if tflags & Frame::FLAG24_UNSYNCH != 0 or id3.f_unsynch != 0
               begin
                 data = Unsynch.decode data
-              rescue Mutagen::ValueError => err
+              rescue Mutagen::Util::ValueError => err
                 raise ID3BadUnsynchData, "#{err}:#{data}" if id3.pedantic
               end
             end
@@ -258,7 +258,7 @@ module Mutagen
               self.class.send(:attr_accessor, reader.name.to_sym) unless self.respond_to? reader.name.to_sym
             end
           end
-          leftover = Mutagen.strip_arbitrary(data, "\x00") unless data.nil?
+          leftover = Mutagen::Util::strip_arbitrary(data, "\x00") unless data.nil?
           unless leftover.nil? or leftover.empty?
             warn "Leftover data: #{self.class}: #{data} (from #{odata})"
           end

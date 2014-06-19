@@ -1,8 +1,11 @@
+require 'mutagen/metadata'
+require 'mutagen/util'
+
 module Mutagen
   module ID3
     # A file with an ID3v2 tag.
     class ID3Data < Mutagen::Metadata
-      include Mutagen::DictProxy
+      include Mutagen::Util::DictProxy
 
       V24      = Gem::Version.new '2.4.0'
       V23      = Gem::Version.new '2.3.0'
@@ -27,7 +30,6 @@ module Mutagen
         @size, @flags, @readbytes         = 0, 0, 0
         @pedantic = true
 
-        @dict           = {} # Need this for our DictProxy
         @unknown_frames = []
         super(*args, ** kwargs)
         if block_given?
@@ -38,7 +40,7 @@ module Mutagen
 
       def fullread(size)
         unless @fileobj.nil?
-          raise Mutagen::ValueError, "Requested bytes (#{size}) less than zero" if size < 0
+          raise Mutagen::Util::ValueError, "Requested bytes (#{size}) less than zero" if size < 0
           if size > @fileobj.size
             raise EOFError, ('Requested %#x of %#x (%s)' % [size.to_i, @fileobj.size, @filename])
           end
@@ -202,11 +204,11 @@ module Mutagen
         raise ID3UnsupportedVersionError, "#{@filename} ID3v2.#{vmaj} not supported" unless [2, 3, 4].include? vmaj
 
         if pedantic
-          raise Mutagen::ValueError, "Header size not synchsafe" unless BitPaddedInteger.has_valid_padding(size)
+          raise Mutagen::Util::ValueError, "Header size not synchsafe" unless BitPaddedInteger.has_valid_padding(size)
           if V24 <= @version and (flags & 0x0f > 0)
-            raise Mutagen::ValueError, ("#{@filename} has invalid flags %#02x" % [flags])
+            raise Mutagen::Util::ValueError, ("#{@filename} has invalid flags %#02x" % [flags])
           elsif (V23 <= @version and @version < V24) and (flags & 0x1f > 0)
-            raise Mutagen::ValueError, ("#{@filename} has invalid flags %#02x" % [flags])
+            raise Mutagen::Util::ValueError, ("#{@filename} has invalid flags %#02x" % [flags])
           end
         end
 
@@ -231,7 +233,7 @@ module Mutagen
             @extsize = BitPaddedInteger.new(extsize).to_i - 4
             if pedantic
               unless BitPaddedInteger.has_valid_padding(extsize)
-                raise Mutagen::ValueError, 'Extended header size not synchsafe'
+                raise Mutagen::Util::ValueError, 'Extended header size not synchsafe'
               end
             end
           else
@@ -312,7 +314,7 @@ module Mutagen
         if @version < V24 and f_unsynch != 0
           begin
             data = Unsynch.decode(data)
-          rescue Mutagen::ValueError
+          rescue Mutagen::Util::ValueError
             # ignore exception
           end
         end
@@ -325,7 +327,7 @@ module Mutagen
             # not enough header
             return if vals.include? nil
             name, size, flags = vals
-            return if Mutagen.strip_arbitrary(name, "\x00").empty?
+            return if Mutagen::Util::strip_arbitrary(name, "\x00").empty?
             size      = if Integer == bpi then size.to_i else bpi.new(size) end
             framedata = data[10...10+size.to_i]
             data      = data[10+size.to_i..-1]
@@ -357,7 +359,7 @@ module Mutagen
             name, size = vals
 
             size, _ = ("\x00" + size).unpack('L>')
-            return if Mutagen::strip_arbitrary(name, "\x00").empty?
+            return if Mutagen::Util::strip_arbitrary(name, "\x00").empty?
             framedata = data[6...6+size]
             data      = data[6+size..-1]
             if size == 0
@@ -503,7 +505,7 @@ module Mutagen
 
           data = header + framedata + ("\x00".b * (outsize - framesize))
           if insize < outsize
-            Mutagen::insert_bytes(f, outsize-insize, insize+10)
+            Mutagen::Util::insert_bytes(f, outsize-insize, insize+10)
           end
           f.rewind
           f.write data
@@ -627,7 +629,7 @@ module Mutagen
               name, size, flags = val
               begin
                 frame             = ParentFrames::BinaryFrame.from_data(self, flags, frame[10..-1])
-              rescue ValueError, NotImplementedError
+              rescue Mutagen::Util::ValueError, NotImplementedError
                 next
               end
             end
@@ -639,12 +641,12 @@ module Mutagen
 
         # TDAT, TYER, and TIME have been turned into TDRC
         begin
-          unless Mutagen::strip_arbitrary((self['TYER'] or '').to_s, "\x00").empty?
+          unless Mutagen::Util::strip_arbitrary((self['TYER'] or '').to_s, "\x00").empty?
             date = @dict.delete('TYER').to_s
-            unless Mutagen::strip_arbitrary((self['TDAT'] or '').to_s, "\x00").empty?
+            unless Mutagen::Util::strip_arbitrary((self['TDAT'] or '').to_s, "\x00").empty?
               dat = @dict.delete('TDAT').to_s
               date = "#{date}-#{dat[2..-1]}-#{dat[0...2]}"
-              unless Mutagen::strip_arbitrary((self['TIME'] or '').to_s, "\x00").empty?
+              unless Mutagen::Util::strip_arbitrary((self['TIME'] or '').to_s, "\x00").empty?
                 time = @dict.delete('TIME').to_s
                 date += "T#{time[0...2]}:#{time[2..-1]}:00"
               end
@@ -787,7 +789,7 @@ module Mutagen
               end
               insize = BitPaddedInteger.new insize
               if id3 == 'ID3' and insize >= 0
-                Mutagen::delete_bytes(f, insize.to_i + 10, 0)
+                Mutagen::Util::delete_bytes(f, insize.to_i + 10, 0)
               end
             end
           end

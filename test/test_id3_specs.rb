@@ -71,17 +71,17 @@ class SpecValidateChecks < MiniTest::Test
   include Mutagen::ID3::Specs
   def test_volumeadjustmentspec
     s = VolumeAdjustmentSpec.new('gain')
-    assert_raises(Mutagen::ValueError) { s.validate(nil, 65) }
+    assert_raises(Mutagen::Util::ValueError) { s.validate(nil, 65) }
   end
 
   def test_volumepeackspec
     s = VolumePeakSpec.new('peak')
-    assert_raises(Mutagen::ValueError) { s.validate(nil, 2) }
+    assert_raises(Mutagen::Util::ValueError) { s.validate(nil, 2) }
   end
 
   def test_bytespec
     s = ByteSpec.new('byte')
-    assert_raises(Mutagen::ValueError) { s.validate(nil, 1000) }
+    assert_raises(Mutagen::Util::ValueError) { s.validate(nil, 1000) }
   end
 end
 
@@ -153,7 +153,7 @@ class BitPaddedIntegerTest < MiniTest::Test
   end
 
   def test_wsmall
-    assert_raises(Mutagen::ValueError) { ID3::BitPaddedInteger.to_str(129, width:1) }
+    assert_raises(Mutagen::Util::ValueError) { ID3::BitPaddedInteger.to_str(129, width:1) }
   end
 
   def test_str_int_init
@@ -208,10 +208,10 @@ class TestUnsynch < MiniTest::Test
 
   def test_unsych_decode
     un = Mutagen::ID3::Unsynch
-    assert_raises(Mutagen::ValueError) { un.decode "\xff\xff\xff\xff" }
-    assert_raises(Mutagen::ValueError) { un.decode "\xff\xf0\x0f\x00" }
-    assert_raises(Mutagen::ValueError) { un.decode "\xff\xe0" }
-    assert_raises(Mutagen::ValueError) { un.decode "\xff" }
+    assert_raises(Mutagen::Util::ValueError) { un.decode "\xff\xff\xff\xff" }
+    assert_raises(Mutagen::Util::ValueError) { un.decode "\xff\xf0\x0f\x00" }
+    assert_raises(Mutagen::Util::ValueError) { un.decode "\xff\xe0" }
+    assert_raises(Mutagen::Util::ValueError) { un.decode "\xff" }
     assert_equal "\xff\x44".b, un.decode("\xff\x44")
   end
 end

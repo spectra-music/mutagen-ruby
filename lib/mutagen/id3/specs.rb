@@ -32,7 +32,7 @@ module Mutagen
           begin
             value.chr unless value.nil?
           rescue RangeError
-            raise Mutagen::ValueError, "#{value} cannot be converted to char"
+            raise Mutagen::Util::ValueError, "#{value} cannot be converted to char"
           end
           value
         end
@@ -84,7 +84,7 @@ module Mutagen
         def validate(frame, value)
           return nil if value.nil?
           return value if 0 <= value.to_i and value.to_i <= 3
-          raise Mutagen::ValueError, "Invalid Encoding: #{value}"
+          raise Mutagen::Util::ValueError, "Invalid Encoding: #{value}"
         end
 
         def _validate23(frame, value, ** kwargs)
@@ -123,7 +123,7 @@ module Mutagen
           if value.size == @len
             return value
           end
-          raise Mutagen::ValueError, "Invalid StringSpec[#{@len}] data: #{value}"
+          raise Mutagen::Util::ValueError, "Invalid StringSpec[#{@len}] data: #{value}"
         end
       end
 
@@ -390,7 +390,7 @@ module Mutagen
           begin
             return ID3TimeStamp.new(value)
           rescue TypeError
-            raise Mutagen::ValueError, "Invalid ID3TimeStamp: #{value}"
+            raise Mutagen::Util::ValueError, "Invalid ID3TimeStamp: #{value}"
           end
         end
       end
@@ -408,7 +408,7 @@ module Mutagen
         def write(frame, value)
           number = (value*512).round
           unless -32768 <= number and number <= 32767
-            raise Mutagen::ValueError, 'Short out of range'
+            raise Mutagen::Util::ValueError, 'Short out of range'
           end
           [number].pack('s>')
         end
@@ -443,7 +443,7 @@ module Mutagen
         def write(frame, value)
           number = (value*32768).round
           unless 0 <= number and number <= 65535
-            raise Mutagen::ValueError, 'Unsigned Short out of range'
+            raise Mutagen::Util::ValueError, 'Unsigned Short out of range'
           end
           # Always write as 16bits for sanity
           "\x10".b + [number].pack('S>')

@@ -64,7 +64,7 @@ module Mutagen
 
       # Removes the chunk from the file
       def delete
-        Mutagen::delete_bytes(@fileobj, @size, @offset)
+        Mutagen::Util::delete_bytes(@fileobj, @size, @offset)
         @parent_chunk.resize(@parent_chunk.data_size - @size) unless @parent_chunk.nil?
       end
 
@@ -232,7 +232,7 @@ module Mutagen
           if new_size > chunk.size
             insert_at = chunk.offset + chunk.size
             insert_size = new_size - chunk.size + new_size % 2
-            Mutagen::insert_bytes fileobj, insert_size, insert_at
+            Mutagen::Util::insert_bytes fileobj, insert_size, insert_at
             chunk.resize new_size
           end
 

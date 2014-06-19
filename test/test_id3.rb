@@ -74,7 +74,7 @@ class ID3Loading < MiniTest::Test
   UNSYNC = File.expand_path('../data/id3v23_unsynch.id3', __FILE__)
 
   def test_empty_file
-    # assert_raises(Mutagen::Mutagen::ValueError) { ID3.new(filename:name) }
+    # assert_raises(Mutagen::Mutagen::Util::ValueError) { ID3.new(filename:name) }
     assert_raises(Mutagen::ID3::ID3NoHeaderError) { ID3Data.new(filename:EMPTY) }
     #from_name = ID3(name)
     #obj = open(name, 'rb')
@@ -106,14 +106,14 @@ class ID3Loading < MiniTest::Test
   def test_header_2_4_invalid_flags
     id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x04\x00\x1f\x00\x00\x00\x00"))
-    exception = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
+    exception = assert_raises(Mutagen::Util::ValueError) { id3.send(:load_header) }
     assert_equal ' has invalid flags 0x1f', exception.message
   end
 
   def test_header_2_4_unsynch_flags
     id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x04\x00\x10\x00\x00\x00\xFF"))
-    exception = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
+    exception = assert_raises(Mutagen::Util::ValueError) { id3.send(:load_header) }
     assert_equal 'Header size not synchsafe', exception.message
   end
 
@@ -126,10 +126,10 @@ class ID3Loading < MiniTest::Test
   def test_header_2_3_invalid_flags
     id3 = ID3Data.new
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x1f\x00\x00\x00\x00"))
-    ex = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
+    ex = assert_raises(Mutagen::Util::ValueError) { id3.send(:load_header) }
     assert_equal ' has invalid flags 0x1f', ex.message
     id3.instance_variable_set('@fileobj', StringIO.new("ID3\x03\x00\x0f\x00\x00\x00\x00"))
-    ex = assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
+    ex = assert_raises(Mutagen::Util::ValueError) { id3.send(:load_header) }
     assert_equal ' has invalid flags 0xf', ex.message
   end
 
@@ -163,7 +163,7 @@ class ID3Loading < MiniTest::Test
   def test_header_2_4_extended_unsynch_size
     id3 = ID3Data.new
     id3.instance_variable_set('@fileobj',StringIO.new("ID3\x04\x00\x40\x00\x00\x00\x00\x00\x00\x00\xFF\x5a"))
-    assert_raises(Mutagen::ValueError) { id3.send(:load_header) }
+    assert_raises(Mutagen::Util::ValueError) { id3.send(:load_header) }
   end
 
   def test_header_2_4_extended_but_not
@@ -303,7 +303,7 @@ class ID3Tags < MiniTest::Test
 
   def test_bad_encoding
     assert_raises(IndexError) { ID3Data::Frames::TPE1.from_data(ID3_24, 0, "\x09ab") }
-    assert_raises(Mutagen::ValueError) { ID3Data::Frames::TPE1.new(encoding:9, text: 'ab') }
+    assert_raises(Mutagen::Util::ValueError) { ID3Data::Frames::TPE1.new(encoding:9, text: 'ab') }
   end
 
   def test_bad_sync

@@ -56,7 +56,7 @@ module Mutagen
 
       def fix(string)
         s = string.split("\x00".b).first
-        Mutagen::strip_arbitrary(s.strip, "\x00".b).force_encoding('ISO-8859-1') unless s.nil?
+        Mutagen::Util::strip_arbitrary(s.strip, "\x00".b).force_encoding('ISO-8859-1') unless s.nil?
       end
 
       title, artist, album, year, comment = [title, artist, album, year, comment].map { |e| fix e }

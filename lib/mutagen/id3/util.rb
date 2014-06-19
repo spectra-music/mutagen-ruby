@@ -2,21 +2,21 @@ module Mutagen
   module ID3
     class ID3Error < Exception
     end
-    class ID3NoHeaderError < ValueError
+    class ID3NoHeaderError < Util::ValueError
     end
-    class ID3BadUnsynchData < ValueError
+    class ID3BadUnsynchData < Util::ValueError
     end
-    class ID3BadCompressedData < ValueError
+    class ID3BadCompressedData < Util::ValueError
     end
-    class ID3TagError < ValueError
+    class ID3TagError < Util::ValueError
     end
     class ID3UnsupportedVersionError < NotImplementedError
     end
     class ID3EncryptionUnsupportedError < NotImplementedError
     end
-    class ID3JunkFrameError < ValueError
+    class ID3JunkFrameError < Util::ValueError
     end
-    class ID3Warning < ValueError
+    class ID3Warning < Util::ValueError
     end
 
     module Unsynch
@@ -29,14 +29,14 @@ module Mutagen
             safe = (val != 0xFF)
           else
             if val >= 0xE0
-              raise Mutagen::ValueError, 'invalid sync-safe string'
+              raise Mutagen::Util::ValueError, 'invalid sync-safe string'
             elsif val != 0x00
               output << val
             end
             safe = true
           end
         end
-        raise Mutagen::ValueError, 'string ended unsafe' unless safe
+        raise Mutagen::Util::ValueError, 'string ended unsafe' unless safe
         return output
       end
 
@@ -74,7 +74,7 @@ module Mutagen
             index  = 0
             bytes_ = "\x00" * width
             while value > 0
-              raise Mutagen::ValueError, "Value too wide (#{width} bytes)" if index >= width
+              raise Mutagen::Util::ValueError, "Value too wide (#{width} bytes)" if index >= width
               bytes_.setbyte(index, value & mask)
               value >>= bits
               index += 1

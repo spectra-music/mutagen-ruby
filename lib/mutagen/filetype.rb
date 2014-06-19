@@ -1,10 +1,11 @@
+require 'mutagen/util'
 require 'pp'
 
 module Mutagen
   # An abstract object wrapping tags and
   # audio stream information
   class FileType
-    include HashMixin
+    include Util::HashMixin
 
     # Stream information (length, bitrate, sample rate)
     attr :info
