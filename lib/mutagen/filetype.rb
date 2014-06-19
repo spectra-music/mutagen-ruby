@@ -1,3 +1,5 @@
+require 'pp'
+
 module Mutagen
   # An abstract object wrapping tags and
   # audio stream information
@@ -9,6 +11,8 @@ module Mutagen
 
     # Metadata tags, if any
     attr :tags
+
+    MIMES = ['appliation/octet-stream']
 
     def initialize(filename=nil, *args, **kwargs)
       if filename.nil?
@@ -60,15 +64,15 @@ module Mutagen
     # Save metadata tags
     def save_tags(**kwargs)
       raise 'No tags in file' if @tags.nil?
-      @tags.save_tags(filename, ** kwargs)
+      @tags.save(filename, ** kwargs)
     end
 
     # TODO: make this work with 'pp' or 'to_s'
     # Print stream information and comment key=value pairs
     def pprint
-      stream = "#{@info.pprint} #{@mime[0]}"
-      tags = @tags.pprint
-      stream + tags.join("\n")
+      stream = "#{@info.pprint} #{mime[0]}"
+      tags = tags.pretty_inspect
+      stream + tags
     end
 
     # Adds new tags to the file
@@ -81,15 +85,16 @@ module Mutagen
     # A list of mime types
     def mime
       mimes = []
-      ancestors.each do |parent|
-        if parent.class_variable_defined? '@@mimes'
-          parent.class_variable_get('@@mimes').each do |mime|
+      self.class.ancestors.each do |parent|
+        if parent.const_defined? 'MIMES'
+          parent.const_get('MIMES').each do |mime|
             unless mimes.include? mime
               mimes << mime
             end
           end
         end
       end
+      mimes
     end
 
     def self.score(filename, file, header)

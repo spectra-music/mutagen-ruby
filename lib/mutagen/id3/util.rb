@@ -1,5 +1,7 @@
 module Mutagen
   module ID3
+    class ID3Error < Exception
+    end
     class ID3NoHeaderError < ValueError
     end
     class ID3BadUnsynchData < ValueError

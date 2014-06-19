@@ -144,7 +144,7 @@ module Mutagen
 
       v1['year'] = (year + "\x00\x00\x00\x00")[0...4]
 
-      'TAG' << v1["title"] << v1['artist'] << v1['album'] << v1['year'] << v1['comment'] << v1['track'] << v1['genre']
+      'TAG' << v1['title'] << v1['artist'] << v1['album'] << v1['year'] << v1['comment'] << v1['track'] << v1['genre']
     end
   end
 end

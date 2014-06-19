@@ -2,6 +2,7 @@ require 'mutagen/version'
 require 'mutagen/metadata'
 require 'mutagen/util'
 require 'mutagen/id3'
+require 'mutagen/aiff'
 
 module Mutagen
 

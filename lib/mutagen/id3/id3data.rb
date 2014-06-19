@@ -58,7 +58,7 @@ module Mutagen
       #                         update_to_v23 / update_to_v24 manually.
       # @param v2_version [Fixnum] the minor version number of v2 to use
       def load(filename, known_frames: nil, translate: true, v2_version: 4)
-        raise Mutagen::ValueError, 'Only 3 and 4 possible for v2_version' unless [3, 4].include? v2_version
+        raise ArgumentError, 'Only 3 and 4 possible for v2_version' unless [3, 4].include? v2_version
         @filename     = case filename
                         when Hash;
                           filename[:filename]
