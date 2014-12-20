@@ -594,7 +594,7 @@ module Mutagen
         end
         footer = fileobj.read
         filename = filename.lower
-        (footer.include? 'APETAGEX' ? 1 : 0) - (header.start_with?('ID3') ? 1 : 0)
+        (footer.include?('APETAGEX') ? 1 : 0) - (header.start_with?('ID3') ? 1 : 0)
       end
     end
   end

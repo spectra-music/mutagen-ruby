@@ -4,6 +4,7 @@ require 'mutagen/util'
 require 'mutagen/id3'
 require 'mutagen/aiff'
 require 'mutagen/apev2'
+require 'mutagen/asf'
 
 module Mutagen
 

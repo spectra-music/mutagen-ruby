@@ -74,12 +74,12 @@ module Mutagen
       end
 
       def fetch(key, default=nil)
-        if default.nil?
-          raise KeyError, "No such key in Hash" unless has_key? key
-        else
+        val = self[key]
+        if val.nil?
+          raise KeyError, 'No such key in Hash' if default.nil?
           return default
         end
-        self[key]
+        val
       end
 
       def delete_item(key)
