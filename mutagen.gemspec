@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = Mutagen::VERSION
   spec.authors       = ['Katherine Whitlock']
   spec.email         = ['toroidalcode@gmail.com']
-  spec.summary       = %q{TODO: Write a short summary. Required.}
-  spec.description   = %q{TODO: Write a longer description. Optional.}
+  spec.summary       = %q{A Ruby version of the fantastic Mutagen tag editing library.}
+  spec.description   = ''
   spec.homepage      = ''
   spec.license       = 'MIT'
 
